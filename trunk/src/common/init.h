@@ -11,15 +11,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 
-#include "common/util.h"
-
-/* Info to be included in adjacency matrix cells */
-typedef struct link_info_s {
-    uint64 link_speed;
-    sockaddr src_addr;
-    sockaddr dst_addr;
-    int sock_fd;
-} link_info_t;
+#include "common/defs.h"
 
 
 

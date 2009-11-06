@@ -9,22 +9,32 @@
 #ifndef UTIL_H_
 #define UTIL_H_
 
+#include <string.h>
 
-#include <sys/types.h>
+#include "common/defs.h"
+
+#define BASE_10         10
+#define BASE_16         16
 
 
-/* Data typedefs */
-typedef int8_t  int8
-typedef int16_t int16
-typedef int32_t int32
-typedef int64_t int64
+/*
+ * Debuging macros
+ */
+#define dbg_msg(format, args...) \
+fprintf(stdout, "error: %s:&d %s() -> %s", __FILE__, __LINE__, __func__, format, ##args)
 
-typedef u_int8_t  uint8
-typedef u_int16_t uint16
-typedef u_int32_t uint32
-typedef u_int64_t uint64
+#define dbg_err(err_msg, args...) \
+fprintf(stderr, "error: %s:&d %s() -> %s", __FILE__, __LINE__, __func__, format, ##args)
 
-extern uint64 msg_delay_usec(uint64 link_speed, size_t msg_length);
 
+
+
+/*
+ * Export functions in "util.c" to be available for other modules.
+ */
+extern int parse_params(int argc, char * argv[],
+                  uint64 *out_proc_id, char ** out_fname);
+
+extern uint64 get_msg_delay_usec(uint64 link_speed, size_t msg_length);
 
 #endif /* UTIL_H_ */
