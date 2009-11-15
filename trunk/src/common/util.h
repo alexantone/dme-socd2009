@@ -11,29 +11,25 @@
 
 #include <string.h>
 
-#include "common/defs.h"
+#include <common/defs.h>
 
 #define BASE_10         10
 #define BASE_16         16
 
 
-/*
- * Debuging macros
- */
-#define dbg_msg(format, args...) \
-fprintf(stdout, "error: %s:&d %s() -> %s", __FILE__, __LINE__, __func__, format, ##args)
-
-#define dbg_err(err_msg, args...) \
-fprintf(stderr, "error: %s:&d %s() -> %s", __FILE__, __LINE__, __func__, format, ##args)
-
-
-
+#define safe_free(p) (p ? free(p) : \
+                          dbg_msg("You tried to free pointer "#p"=NULL! But we forgive you..."),\
+                      p = NULL )
 
 /*
  * Export functions in "util.c" to be available for other modules.
  */
 extern int parse_params(int argc, char * argv[],
                   uint64 *out_proc_id, char ** out_fname);
+extern int parse_file(const char * fname, proc_id_t p_id,
+                 link_info_t * out_nodes[]);
+
+extern int open_listen_socket(proc_id_t p_id, link_info_t * const nodes);
 
 extern uint64 get_msg_delay_usec(uint64 link_speed, size_t msg_length);
 
