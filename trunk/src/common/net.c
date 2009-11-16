@@ -11,9 +11,13 @@
 #include <sys/socket.h>
 #include <common/net.h>
 
+/* Global variables from main process */
 extern link_info_t * nodes;
 extern proc_id_t proc_id;
 
+/*
+ * Send the buffer to node with process_id dest.
+ */
 int dme_send_msg(proc_id_t dest, uint8 * buff, size_t len)
 {
     int maxcount = sizeof(nodes) - 1;
@@ -35,7 +39,7 @@ int dme_send_msg(proc_id_t dest, uint8 * buff, size_t len)
  * The buff must be deallocated in the calling function!
  */
 
-#define MAX_PACK_LEN            (1536)
+#define MAX_PACK_LEN    (1024) /* To avoid fragmentation -> UDP fails */
 static uint8 test_buff[MAX_PACK_LEN];
 
 int dme_recv_msg(uint8 ** out_buff, size_t * out_len)
