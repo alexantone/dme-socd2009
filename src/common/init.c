@@ -89,12 +89,12 @@ deliver_event (dme_ev_t event, void * cookie)
      */
     int res = 0;
     
-    sig_cookie_t sc;
-    void * psc = &sc;
-    sc.sc_evt = event;
-    sc.sc_cookie = cookie;
+    /* create container to transport the event and cookie */
+    sig_cookie_t * psc = malloc(sizeof(sig_cookie_t));
+    psc->sc_evt    = event;
+    psc->sc_cookie = cookie;
     
-    res = sigqueue(getpid(), SIGRTMIN, (sigval_t)psc);
+    res = sigqueue(getpid(), SIGRTMIN, (sigval_t)(void *)psc);
     
     return res;
 }
@@ -110,10 +110,16 @@ static void sig_handler(int sig, siginfo_t *siginfo, void * context)
         return;
     }
     
+    /* save data from inside the container */
     sig_cookie_t * sc = siginfo->si_value.sival_ptr;
+    int   evt    = sc->sc_evt;
+    void *cookie = sc->sc_cookie;
+    
+    /* Discard the container after recieving the data */
+    safe_free(sc);
     
     /* Call the function registered to the sc->sc_evt event */
-    (*get_registry_funcp(sc->sc_evt))(sc->sc_cookie);
+    (*get_registry_funcp(evt))(cookie);
 }
 
 

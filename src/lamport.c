@@ -19,7 +19,7 @@
  * global vars, defined in each app
  * Don't forget to declare them in each ".c" file
  */
-uint64 proc_id = 0;                     /* this process id */
+proc_id_t proc_id = 0;                  /* this process id */
 link_info_t * nodes = NULL;             /* peer matrix */
 bool_t exit_request = FALSE;
 
@@ -30,7 +30,7 @@ static char * fname = NULL;
  * These functions must properly free the cookie revieved.
  */
 
-int testfunc1(void * cookie) 
+int testfunc1(void * cookie)
 {
     uint8 *buff = NULL;
     int len = 0;
@@ -45,8 +45,21 @@ int testfunc1(void * cookie)
     dme_recv_msg(&buff, &len);
     dbg_msg("Oh goodie! recieved message[%d]: %s", len, buff);
     
+    dbg_msg("Sequentiality check: dellivering event to call testfunc2.");
+    
+    deliver_event(DME_EV_WANT_CRITICAL_REG, "bla");
+    
+    dbg_msg("Sequentiality check: This message should appear before testfunc2!");
+
     return 0;
 }
+
+int testfunc2(void * cookie)
+{
+    dbg_msg("**testfunc2 ** --> This message should appear after sequnetiality check!");
+    return 0;
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -85,6 +98,7 @@ int main(int argc, char *argv[])
     }
     
     register_event_handler(DME_EV_MSG_IN, testfunc1);
+    register_event_handler(DME_EV_WANT_CRITICAL_REG, testfunc2);
 
     register_event_handler(20, testfunc1); /* This should cause an error */
     
@@ -95,8 +109,9 @@ int main(int argc, char *argv[])
     
     deliver_event(DME_EV_MSG_IN, "GREAT SUCCESS");
     deliver_event(DME_EV_MSG_IN, "O'rly ?");
+    deliver_event(DME_EV_WANT_CRITICAL_REG, "bla");
     
-    deliver_event(20, "This should generate 'how we got here???' msg");
+    deliver_event(20, "This should generate 'how we got here!?' msg");
     
     
     dbg_msg("Sleeping 5 secs before engaging in network communication."\
