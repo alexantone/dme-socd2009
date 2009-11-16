@@ -16,20 +16,14 @@
 #include <common/net.h>
 
 /* 
- * Static global vars, defined in each app
+ * global vars, defined in each app
  * Don't forget to declare them in each ".c" file
  */
-static char * fname = NULL;
-static uint64 proc_id = 0;
-
+uint64 proc_id = 0;                     /* this process id */
+link_info_t * nodes = NULL;             /* peer matrix */
 bool_t exit_request = FALSE;
 
-/*
- * Peer matrix.
- * This will be allocated when parsing the file.
- */
-static link_info_t * nodes = NULL;
-
+static char * fname = NULL;
 
 /* 
  * Event handler functions.
@@ -38,7 +32,8 @@ static link_info_t * nodes = NULL;
 
 int testfunc1(void * cookie) 
 {
-    char buff[256];
+    uint8 *buff = NULL;
+    int len = 0;
     /*
      * Test by using this at terminal;
      * $ netcat -u localhost 9001
@@ -47,8 +42,8 @@ int testfunc1(void * cookie)
     dbg_msg("Go check the socket! :p");
     
     /* This is just a test now */
-    recv(nodes[proc_id].sock_fd, buff, sizeof(buff), 0);
-    dbg_msg("Oh goodie! recieved message: %s", buff);
+    dme_recv_msg(&buff, &len);
+    dbg_msg("Oh goodie! recieved message[%d]: %s", len, buff);
     
     return 0;
 }
@@ -102,6 +97,19 @@ int main(int argc, char *argv[])
     deliver_event(DME_EV_MSG_IN, "O'rly ?");
     
     deliver_event(20, "This should generate 'how we got here???' msg");
+    
+    
+    dbg_msg("Sleeping 5 secs before engaging in network communication."\
+            "Wait for other nodes to init");
+    sleep(5);
+    
+    dbg_msg("Sending a tex to another process id");
+    
+    char * buff[256];
+    
+    sprintf(buff, "\n\n\n\t\t *** This is a message from peer process %d ****\n\n\n\n", proc_id);
+    dme_send_msg((proc_id +1) % 2, buff, strlen(buff)); /* send to other node (1 or 0) */
+    
     
     /*
      * Main loop: just sit here and wait for interrups.

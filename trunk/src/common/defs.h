@@ -10,6 +10,7 @@
 #define DEFS_H_
 
 #include <sys/types.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <netinet/in.h>
@@ -55,6 +56,15 @@ fprintf(stdout, "debug: %s:%d %s() -> " format "\n", __FILE__, __LINE__, __func_
 
 #define dbg_err(format, args...) \
 fprintf(stderr, "error: %s:%d %s() -> " format "\n", __FILE__, __LINE__, __func__, ##args)
+
+/* 
+ * Safe free.
+ * Can be called on NULL pointers.
+ * Render the pointer NULL after call
+ */
+#define safe_free(p) (p ? free(p) : \
+                          dbg_msg("You tried to free pointer "#p"=NULL! But we forgive you..."),\
+                      p = NULL )
 
 
 #define TRUE    (1)

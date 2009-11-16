@@ -17,10 +17,6 @@
 #define BASE_16         16
 
 
-#define safe_free(p) (p ? free(p) : \
-                          dbg_msg("You tried to free pointer "#p"=NULL! But we forgive you..."),\
-                      p = NULL )
-
 /*
  * Export functions in "util.c" to be available for other modules.
  */
