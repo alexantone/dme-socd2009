@@ -23,9 +23,10 @@
 extern int parse_params(int argc, char * argv[],
                   uint64 *out_proc_id, char ** out_fname);
 extern int parse_file(const char * fname, proc_id_t p_id,
-                 link_info_t * out_nodes[]);
+               link_info_t * out_nodes[], size_t * out_nodes_count);
 
-extern int open_listen_socket(proc_id_t p_id, link_info_t * const nodes);
+extern int open_listen_socket (proc_id_t p_id, link_info_t * const nodes,
+                               size_t nodes_count);
 
 extern uint64 get_msg_delay_usec(uint64 link_speed, size_t msg_length);
 

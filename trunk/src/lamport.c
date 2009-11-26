@@ -21,6 +21,7 @@
  */
 proc_id_t proc_id = 0;                  /* this process id */
 link_info_t * nodes = NULL;             /* peer matrix */
+size_t nodes_count = 0;
 bool_t exit_request = FALSE;
 
 static char * fname = NULL;
@@ -39,18 +40,11 @@ int testfunc1(void * cookie)
      * $ netcat -u localhost 9001
      */
     dbg_msg("A message arrived from the depths of internet! cookie='%s'", (char *)cookie);
-    dbg_msg("Go check the socket! :p");
     
     /* This is just a test now */
     dme_recv_msg(&buff, &len);
     dbg_msg("Oh goodie! recieved message[%d]: %s", len, buff);
     
-    dbg_msg("Sequentiality check: dellivering event to call testfunc2.");
-    
-    deliver_event(DME_EV_WANT_CRITICAL_REG, "bla");
-    
-    dbg_msg("Sequentiality check: This message should appear before testfunc2!");
-
     return 0;
 }
 
@@ -74,17 +68,17 @@ int main(int argc, char *argv[])
     /*
      * Parse the file in fname
      */
-    if (0 != (res = parse_file(fname, proc_id, &nodes))) {
+    if (0 != (res = parse_file(fname, proc_id, &nodes, &nodes_count))) {
         dbg_err("parse_file() returned nonzero status:%d", res);
         goto end;
     }
-    dbg_msg("nodes has %d elements", sizeof(nodes));
+    dbg_msg("nodes has %d elements", nodes_count);
     
     
     /*
      * Init connections (open listenning socket)
      */
-    if (0 != (res = open_listen_socket(proc_id, nodes))) {
+    if (0 != (res = open_listen_socket(proc_id, nodes, nodes_count))) {
         dbg_err("open_listen_socket() returned nonzero status:%d", res);
         goto end;
     }
