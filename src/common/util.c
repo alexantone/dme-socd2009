@@ -88,7 +88,8 @@ static inline uint64 speed_mult(char prefix)
     return 1;
 }
 
-int parse_file(const char * fname, proc_id_t p_id, link_info_t ** out_nodes)
+int parse_file(const char * fname, proc_id_t p_id,
+               link_info_t ** out_nodes, size_t * out_nodes_count)
 {
     FILE *fh = NULL;
     int prc_count = 0;
@@ -119,7 +120,8 @@ int parse_file(const char * fname, proc_id_t p_id, link_info_t ** out_nodes)
         fclose(fh);
         return ERR_MALLOC;
     }
-    dbg_msg("Allocated nodes array nodes[%d]", sizeof(*out_nodes));
+    *out_nodes_count = prc_count;
+    dbg_msg("Allocated nodes array nodes[%d]", *out_nodes_count);
     
     ix = 0;
     while (ix < prc_count && fgets(linebuf, sizeof(linebuf), fh) != NULL) {
@@ -185,10 +187,10 @@ int parse_file(const char * fname, proc_id_t p_id, link_info_t ** out_nodes)
 
 
 
-int open_listen_socket (proc_id_t p_id, link_info_t * const nodes)
+int open_listen_socket (proc_id_t p_id, link_info_t * const nodes, size_t nodes_count)
 {
     int res = 0;
-    int max_nodes = sizeof(nodes) - 1;
+    int max_nodes = nodes_count -1;
     
     if (p_id < 0 || p_id > max_nodes) {
         dbg_err("process id out of bounds: %llu not int [0..%d]", p_id, max_nodes);

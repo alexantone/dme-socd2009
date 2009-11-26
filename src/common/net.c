@@ -13,6 +13,7 @@
 
 /* Global variables from main process */
 extern link_info_t * nodes;
+extern size_t nodes_count;
 extern proc_id_t proc_id;
 
 /*
@@ -20,7 +21,7 @@ extern proc_id_t proc_id;
  */
 int dme_send_msg(proc_id_t dest, uint8 * buff, size_t len)
 {
-    int maxcount = sizeof(nodes) - 1;
+    int maxcount = nodes_count - 1;
     struct sockaddr * dest_addr = NULL;
     
     if (dest < 0 || dest > maxcount) {
