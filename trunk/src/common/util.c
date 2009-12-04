@@ -110,7 +110,7 @@ int parse_file(const char * fname, proc_id_t p_id,
     }
     
     fscanf(fh, "%d", &prc_count);
-    dbg_msg("prc_count = %d", prc_count);
+    dbg_msg("prc_count = %d + 1 supervisor (proc_id = 0)", prc_count);
     fgets(linebuf, sizeof(linebuf), fh);
     
     dbg_msg("Trying to allocate nodes[%d] of size %d * %d",
@@ -124,7 +124,7 @@ int parse_file(const char * fname, proc_id_t p_id,
     dbg_msg("Allocated nodes array nodes[%d]", *out_nodes_count);
     
     ix = 0;
-    while (ix < prc_count && fgets(linebuf, sizeof(linebuf), fh) != NULL) {
+    while (ix <= prc_count && fgets(linebuf, sizeof(linebuf), fh) != NULL) {
         dbg_msg("readbuf[%d] = %s", strlen(linebuf), linebuf);
         
         /*
@@ -133,13 +133,18 @@ int parse_file(const char * fname, proc_id_t p_id,
          * 
          * Line number determines the proc_id
          */
-        
+
+        tok = strtok(linebuf, TOK_DELIM);
+
+        /* Skip empty lines or comments */
+        if ( tok == NULL || tok[0] == '\0' || tok[0] == '#' ) {
+            continue;
+        }
+
+        jx = 0;
         cnode = (*out_nodes) + ix;
         dbg_msg("cnode: offset from start of array is %4d bytes", (void*)cnode - (void*)(*out_nodes));
-        
-        jx = 0;
-        tok = strtok(linebuf, TOK_DELIM);
-        
+
         /* Parse the IP */
         cnode->listen_addr.sin_family = AF_INET;
         inet_pton(AF_INET, tok, &cnode->listen_addr.sin_addr.s_addr);
@@ -152,7 +157,7 @@ int parse_file(const char * fname, proc_id_t p_id,
          * Only for this proc_id parse link speeds,
          * wich can have sufixes of K,M,G case insensitive
          */
-        if (ix == p_id) {
+        if (ix == p_id && ix > 0) {
             while (jx < prc_count && NULL != (tok = strtok(NULL, TOK_DELIM))) {
                 /* No error checking done here */
                 lnk_speed = strtoull(tok, &mult, BASE_10) * speed_mult(*mult);

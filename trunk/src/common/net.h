@@ -14,6 +14,7 @@
 extern int dme_send_msg(proc_id_t dest, uint8 * buff, size_t len);
 extern int dme_recv_msg(uint8 ** out_buff, size_t * out_len);
 
+extern int dme_broadcast_msg(uint8 * buff, size_t len);
 
 
 #endif /* NET_H_ */

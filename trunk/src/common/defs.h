@@ -51,12 +51,21 @@ typedef struct link_info_s {
 /*
  * Debuging macros
  */
+#define DEBUGING_ENABLED
+#ifdef DEBUGING_ENABLED
+
 #define dbg_msg(format, args...) \
 fprintf(stdout, "debug: %s:%d %s() -> " format "\n", __FILE__, __LINE__, __func__, ##args)
 
 #define dbg_err(format, args...) \
 fprintf(stderr, "error: %s:%d %s() -> " format "\n", __FILE__, __LINE__, __func__, ##args)
 
+#else
+
+#define dbg_msg(format, args...) (0)
+#define dbg_err(format, args...) (0)
+
+#endif
 /* 
  * Safe free.
  * Can be called on NULL pointers.

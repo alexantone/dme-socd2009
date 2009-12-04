@@ -12,16 +12,16 @@
 #include <common/net.h>
 
 /* Global variables from main process */
-extern link_info_t * nodes;
-extern size_t nodes_count;
-extern proc_id_t proc_id;
+extern const link_info_t * const nodes;
+extern const size_t nodes_count;
+extern const proc_id_t proc_id;
 
 /*
  * Send the buffer to node with process_id dest.
  */
 int dme_send_msg(proc_id_t dest, uint8 * buff, size_t len)
 {
-    int maxcount = nodes_count - 1;
+    int maxcount = nodes_count;
     struct sockaddr * dest_addr = NULL;
     
     if (dest < 0 || dest > maxcount) {
@@ -35,6 +35,17 @@ int dme_send_msg(proc_id_t dest, uint8 * buff, size_t len)
     sendto(nodes[proc_id].sock_fd, buff, len, 0, dest_addr, sizeof(*dest_addr));
     
 }
+
+/*
+ * Send a message to all the nodes (1..nodes_count)
+ */
+int dme_broadcast_msg (uint8 * buff, size_t len) {
+    int ix = 0;
+    for (ix = 1; ix <= nodes_count; ix++) {
+        dme_send_msg(ix, buff, len);
+    }
+}
+
 
 /*
  * The buff must be deallocated in the calling function!
