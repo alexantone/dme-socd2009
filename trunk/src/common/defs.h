@@ -34,6 +34,8 @@ typedef u_int64_t uint64;
 
 typedef uint64 proc_id_t;
 
+#define PACKED __attribute__((__packed__))
+
 /* symbolic names to speeds */
 #define KBITPS (1 << 10)
 #define MBITPS (1 << 20)

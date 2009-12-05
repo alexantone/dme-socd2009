@@ -27,10 +27,47 @@ bool_t exit_request = FALSE;
 
 static char * fname = NULL;
 
+static bool_t creg_is_free = TRUE;
+
+
+/* 
+ * trigger_critical_region()
+ * 
+ * Trigger request of the critical region for a certain process.
+ * Once entered the critical region, that process will stay there
+ * for the specified ammount of time.
+ */
+static int trigger_critical_region (proc_id_t dest_pid,
+                                    uint32 sec_delta, uint32 usec_delta) {
+    sup_message_t msg = {};
+    uint8 * buff = (uint8 *) &msg;
+    
+    /* convert the parameters to network order */
+    msg.process_id = htonq(proc_id);
+    msg.msg_type = htons(DME_EV_WANT_CRITICAL_REG);
+    msg.sec_tdelta = htonl(sec_delta);
+    msg.usec_tdelta = htonl(usec_delta);
+    
+    return dme_send_msg(dest_pid, buff, SUPERVISOR_MESSAGE_LENGTH);
+}
+
+
 /* 
  * Event handler functions.
  * These functions must properly free the cookie revieved.
  */
+int do_work(void * cookie) {
+    
+    /* If the critical region is free, elect processes to compete for it */
+    if (creg_is_free) {
+        trigger_critical_region(1,5,0);
+    }
+    
+    
+    sleep(5);
+    /* reschedule this process */
+    deliver_event(DME_SEV_PERIODIC_WORK, NULL);
+}
 
 int process_messages(void * cookie)
 {
@@ -90,12 +127,14 @@ int main(int argc, char *argv[])
         goto end;
     }
     
-    register_event_handler(DME_EV_MSG_IN, process_messages);
+    register_event_handler(DME_SEV_PERIODIC_WORK, do_work);
+    register_event_handler(DME_SEV_MSG_IN, process_messages);
     
     /*
      * Main loop: just sit here and wait for interrups.
      * All work is done in interrupt handlers mapped to registered functions.
      */
+    deliver_event(DME_SEV_PERIODIC_WORK, NULL);
     while(!exit_request) {
         wait_events();
     }

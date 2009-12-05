@@ -20,6 +20,10 @@ typedef enum dme_evt_e {
     DME_EV_ENTERED_CRITICAL_REG,
     DME_EV_EXITED_CRITICAL_REG,
 
+    /* These events are used by the supervisor */
+#define DME_SEV_MSG_IN (DME_EV_MSG_IN)
+    DME_SEV_PERIODIC_WORK,
+
     /* This means the event id is invalid */
     DME_EV_INVALID,
 } dme_ev_t;

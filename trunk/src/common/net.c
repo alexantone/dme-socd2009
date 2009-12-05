@@ -30,7 +30,7 @@ int dme_send_msg(proc_id_t dest, uint8 * buff, size_t len)
         return 1;
     }
     
-    dest_addr = &nodes[dest].listen_addr;
+    dest_addr = (struct sockaddr *)&nodes[dest].listen_addr;
     
     sendto(nodes[proc_id].sock_fd, buff, len, 0, dest_addr, sizeof(*dest_addr));
     
