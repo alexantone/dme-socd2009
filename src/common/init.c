@@ -36,6 +36,12 @@ static dme_ev_reg_t func_registry[] = {
     { DME_EV_WANT_CRITICAL_REG, NULL },
     { DME_EV_ENTERED_CRITICAL_REG, NULL },
     { DME_EV_EXITED_CRITICAL_REG, NULL },
+    
+    /* Supervisor events */
+    { DME_SEV_MSG_IN, NULL },
+    { DME_SEV_PERIODIC_WORK, NULL },
+
+    /* invalid events */
     { DME_EV_INVALID, null_func}
 };
 static func_registry_count = get_count(func_registry);

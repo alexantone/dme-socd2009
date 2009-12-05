@@ -36,6 +36,8 @@ int testfunc1(void * cookie)
     uint8 *buff = NULL;
     uint8 outbuff[256];
     int len = 0;
+    proc_id_t source_pid;
+    
     /*
      * Test by using this at terminal;
      * $ netcat -u localhost 9001
@@ -44,12 +46,22 @@ int testfunc1(void * cookie)
     
     /* This is just a test now */
     dme_recv_msg(&buff, &len);
-    dbg_msg("Oh goodie! recieved message[%d]: %s \n Announcing the supervisor", len, buff);
+
+    /* check the source of the message */
+    source_pid = ntohq(*(uint64 *)buff);
     
-    snprintf(outbuff, sizeof(outbuff),
-             "Dear supervisor somebody sent me this message:\n%s\0", buff);
-    dme_send_msg(0, outbuff, sizeof(outbuff));
-    
+    if (source_pid == 0) {
+        /* This is from the supervisor! Pay attention (pretend your'e working)*/
+        dbg_msg("The supervisor told me something ... pretending i'm working");
+    } else {
+        /* This is a message from someone else. Just inform the supervisor */
+        dbg_msg("Announcing the supervisor that a message arrived.\n msg[%d]:\n%s",
+                len,buff);
+        snprintf(outbuff, sizeof(outbuff),
+                 "Dear supervisor somebody sent me this message:\n%s\0", buff);
+        dme_send_msg(0, outbuff, sizeof(outbuff));
+    }
+
     return 0;
 }
 
