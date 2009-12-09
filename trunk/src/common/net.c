@@ -63,7 +63,7 @@ int dme_recv_msg(uint8 ** out_buff, size_t * out_len)
     /* Determine the length of the packet first */
     len = recv(nodes[proc_id].sock_fd, test_buff, MAX_PACK_LEN, MSG_PEEK);
     
-    if (!(*out_buff = malloc(len))) {
+    if (len <= 0 || !(*out_buff = malloc(len))) {
         dbg_err("Could not allocate buffer of length %d", len);
         return -1;
     }
@@ -77,6 +77,6 @@ int dme_recv_msg(uint8 ** out_buff, size_t * out_len)
     
     /* Now it's safe to report the revieved buffer length */
     *out_len = len;
-    
+    return 0;
 }
 

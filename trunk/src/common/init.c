@@ -13,6 +13,11 @@
 #include <fcntl.h>
 #include <common/init.h>
 
+/* error handling for the main program */
+extern int    err_code;
+extern bool_t exit_request;
+
+
 typedef struct dme_ev_reg_s {
     dme_ev_t           der_event;
     ev_handler_fnct_t *der_funcp;
@@ -111,6 +116,7 @@ deliver_event (dme_ev_t event, void * cookie)
  */
 static void sig_handler(int sig, siginfo_t *siginfo, void * context)
 {
+    int err;
     /* This fuinction should only be registerd to SIGRTMIN */
     if (siginfo->si_signo != SIGRTMIN) {
         return;
@@ -125,7 +131,13 @@ static void sig_handler(int sig, siginfo_t *siginfo, void * context)
     safe_free(sc);
     
     /* Call the function registered to the sc->sc_evt event */
-    (*get_registry_funcp(evt))(cookie);
+    err = (*get_registry_funcp(evt))(cookie);
+    
+    /* If there was a fata error terminate the program */
+    if (err >= ERR_FATAL) {
+        err_code = err;
+        exit_request = TRUE;
+    }
 }
 
 

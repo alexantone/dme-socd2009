@@ -22,6 +22,8 @@
 proc_id_t proc_id = 0;                  /* this process id */
 link_info_t * nodes = NULL;             /* peer matrix */
 size_t nodes_count = 0;
+
+int err_code = 0;
 bool_t exit_request = FALSE;
 
 static char * fname = NULL;
@@ -31,44 +33,149 @@ static char * fname = NULL;
  * These functions must properly free the cookie revieved.
  */
 
-int testfunc1(void * cookie)
-{
-    uint8 *buff = NULL;
-    uint8 outbuff[256];
-    int len = 0;
-    proc_id_t source_pid;
+enum dme_lamport_states {
+    IDLE,
+    PENDING,
+    EXECUTING,
+};
+
+static int fsm_state = IDLE;
+
+
+static int supervisor_msg_in(const uint8 * const buff, const int len) {
+    int ret = 0;
     
-    /*
-     * Test by using this at terminal;
-     * $ netcat -u localhost 9001
-     */
+    switch(fsm_state) {
+    case IDLE:
+        break;
+    /* The supervisor should not send a message in these states */
+    case PENDING:
+    case EXECUTING:
+        dbg_msg("Ignoring message from supervisor (not in IDLE state).");
+        break;
+    default:
+        dbg_err("Fatal error: FSM state corrupted");
+        ret = ERR_FATAL;
+        break;
+    }
+    
+    return ret;
+}
+
+
+/* This is the algortihm's implementation */
+static int peer_msg_in(const uint8 * const buff, const int len) {
+    int ret = 0;
+    
+    switch(fsm_state) {
+    case IDLE:
+        break;
+    case PENDING:
+        break;
+    case EXECUTING:
+        break;
+    default:
+        dbg_err("Fatal error: FSM state corrupted");
+        ret = ERR_FATAL;
+        break;
+    }
+    
+    return ret;
+}
+
+/*
+ * msg_demux()
+ * 
+ * Checks the source of the message (peer/supervisor) and calls the coresponding
+ * processing routine.
+ */
+int msg_demux(void * cookie)
+{
+    int ret = 0;
+    proc_id_t source_pid;
+    uint8 *buff = NULL;
+    int len = 0;
+    
     dbg_msg("A message arrived from the depths of internet! cookie='%s'", (char *)cookie);
     
-    /* This is just a test now */
-    dme_recv_msg(&buff, &len);
-
+    /* get the contents of the message */
+    if (0 != (ret = dme_recv_msg(&buff, &len))) {
+        return ret;
+    }
+    
     /* check the source of the message */
     source_pid = ntohq(*(uint64 *)buff);
     
     if (source_pid == 0) {
-        /* This is from the supervisor! Pay attention (pretend your'e working)*/
-        dbg_msg("The supervisor told me something ... pretending i'm working");
+        /* This is from the supervisor*/
+        ret = supervisor_msg_in(buff, len);
+    } else if (source_pid >= 1 && source_pid <= nodes_count) {
+        ret = peer_msg_in(buff, len);
     } else {
-        /* This is a message from someone else. Just inform the supervisor */
-        dbg_msg("Announcing the supervisor that a message arrived.\n msg[%d]:\n%s",
-                len,buff);
-        snprintf(outbuff, sizeof(outbuff),
-                 "Dear supervisor somebody sent me this message:\n%s\0", buff);
-        dme_send_msg(0, outbuff, sizeof(outbuff));
+        dbg_err("Recieved possibly malformed messge:"\
+                " 'Process ID'=%llu out of bounds", source_pid);
+        ret = ERR_FATAL;
     }
-
-    return 0;
+    
+    safe_free(buff);
+    return ret;
 }
 
-int testfunc2(void * cookie)
+int process_ev_want_cr(void * cookie)
 {
-    dbg_msg("**testfunc2 ** --> This message should appear after sequnetiality check!");
-    return 0;
+    int ret = 0;
+    dme_message_t * msg = NULL;
+    
+    if (fsm_state != IDLE) {
+        dbg_err("Fatal error: DME_EV_WANT_CRITICAL_REG occured while not in IDLE state.");
+        return (ret = ERR_FATAL);
+    }
+    
+    /* TODO: Switch to the pending state and mark the time */
+    fsm_state = PENDING;
+    
+    return ret;
+}
+
+int process_ev_entered_cr(void * cookie)
+{
+    int ret = 0;
+    dme_message_t * msg = NULL;
+    
+    if (fsm_state != PENDING) {
+        dbg_err("Fatal error: DME_EV_ENTERED_CRITICAL_REG occured while not in PENDING state.");
+        return (ret = ERR_FATAL);
+    }
+    
+    /* Switch to the executing state */
+    fsm_state = EXECUTING;
+    
+    /* 
+     * TODO: Start a timer that will expire after the tdelta recieved from the supervisor
+     *       The tdelta is stored in a global var or in the cookie (to be discussed)
+     */
+    
+    /* TODO: inform the supervisor by sending the tdelta measured from the time mark */
+    
+    return ret;
+}
+
+int process_ev_exited_cr(void * cookie)
+{
+    int ret = 0;
+    dme_message_t * msg = NULL;
+    
+    if (fsm_state != EXECUTING) {
+        dbg_err("Fatal error: DME_EV_EXITED_CRITICAL_REG occured while not in EXECUTING state.");
+        return (ret = ERR_FATAL);
+    }
+    
+    /* Switch to the executing state */
+    fsm_state = IDLE;
+    
+    /* TODO: inform the supervisor and peers that the critical region is now free */
+    
+    return ret;
 }
 
 
@@ -108,23 +215,13 @@ int main(int argc, char *argv[])
         goto end;
     }
     
-    register_event_handler(DME_EV_MSG_IN, testfunc1);
-    register_event_handler(DME_EV_WANT_CRITICAL_REG, testfunc2);
+    register_event_handler(DME_EV_MSG_IN, msg_demux);
+    register_event_handler(DME_EV_WANT_CRITICAL_REG, process_ev_want_cr);
+    register_event_handler(DME_EV_ENTERED_CRITICAL_REG, process_ev_entered_cr);
+    register_event_handler(DME_EV_EXITED_CRITICAL_REG, process_ev_exited_cr);
 
-    dbg_msg("Sleeping 5 secs before engaging in network communication."\
-            "Wait for other nodes to init");
-    sleep(5);
-    
-    dbg_msg("Sending a tex to another process id");
-    
-    char buff[256];
-    
-    sprintf(buff, "\n\n\n\tFrom: %d \n\tTo: %d \nHi there neighbour\n\0", (int)proc_id, 3 - (int)proc_id);
-    dme_send_msg(3 - proc_id, buff, strlen(buff)); /* send to other node (1 or 2) */
-    
-    
     /*
-     * Main loop: just sit here and wait for interrups.
+     * Main loop: just sit here and wait for interrups (triggered by the supervisor).
      * All work is done in interrupt handlers mapped to registered functions.
      */
     while(!exit_request) {
