@@ -24,10 +24,13 @@ extern int dme_recv_msg(uint8 ** out_buff, size_t * out_len);
 extern int dme_broadcast_msg(uint8 * buff, size_t len);
 
 
+
 /* The DME message format */
 /*
  *   0                8                 16                24                32 
  *   +- - - - - - - - + - - - - - - - - + - - - - - - - - + - - - - - - - - +
+ * 0 |                           Packet MAGIC                               |
+ *   |----------------------------------------------------------------------|
  * 1 |                             Process ID                               |
  * 2 |                              (64 bits)                               |
  *   |----------------------------------------------------------------------|
@@ -42,7 +45,10 @@ extern int dme_broadcast_msg(uint8 * buff, size_t len);
  *   |                                                                      |
  * 
  */
+
+#define DME_MSG_MAGIC (0xDAAEAA59)  /* DMEMSG in 31137 speech :) (AA -> M) */
 struct dme_message_s {
+    uint32      dme_magic;
     uint64      process_id;
     uint16      msg_type;
     uint16      flags;
@@ -55,6 +61,8 @@ typedef struct dme_message_s dme_message_t;
 /*
  *   0                8                 16                24                32 
  *   |- - - - - - - - + - - - - - - - - + - - - - - - - - + - - - - - - - - |
+ * 0 |                           Packet MAGIC                               |
+ *   |----------------------------------------------------------------------|
  * 1 |                             Process ID                               |
  * 2 |                              (64 bits)                               |
  *   |----------------------------------------------------------------------|
@@ -66,7 +74,10 @@ typedef struct dme_message_s dme_message_t;
  *   +----------------------------------------------------------------------+
  * 
  */
+
+#define SUP_MSG_MAGIC (0x500FAA59)  /* SUPMSG (SOOFMSg) in 31137 speech :) */
 struct sup_message_s {
+    uint32      sup_magic;
     uint64      process_id;
     uint16      msg_type;
     uint32      sec_tdelta;

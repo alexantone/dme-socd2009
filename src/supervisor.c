@@ -23,6 +23,8 @@
 proc_id_t proc_id = 0;                  /* this process id */
 link_info_t * nodes = NULL;             /* peer matrix */
 size_t nodes_count = 0;
+
+int err_code = 0;
 bool_t exit_request = FALSE;
 
 static char * fname = NULL;
@@ -43,6 +45,7 @@ static int trigger_critical_region (proc_id_t dest_pid,
     uint8 * buff = (uint8 *) &msg;
     
     /* convert the parameters to network order */
+    msg.sup_magic = htonl(SUP_MSG_MAGIC);
     msg.process_id = htonq(proc_id);
     msg.msg_type = htons(DME_EV_WANT_CRITICAL_REG);
     msg.sec_tdelta = htonl(sec_delta);
@@ -73,15 +76,7 @@ int process_messages(void * cookie)
 {
     uint8 *buff = NULL;
     int len = 0;
-    /*
-     * Test by using this at terminal;
-     * $ netcat -u localhost 9001
-     */
-    dbg_msg("A message arrived from the depths of internet! cookie='%s'", (char *)cookie);
-    
-    /* This is just a test now */
-    dme_recv_msg(&buff, &len);
-    dbg_msg("Some process sent this message[%d]:\n %s", len, buff);
+
     
     return 0;
 }

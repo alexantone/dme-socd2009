@@ -15,11 +15,12 @@
 #include <stdlib.h>
 #include <netinet/in.h>
 
-
-#define ERR_BADARGS     1
-#define ERR_BADFILE     2
-#define ERR_MALLOC      3
-#define ERR_INIT        4
+/* Errors above ERR_FATAL force quitting the program */
+#define ERR_FATAL       0x1000
+#define ERR_BADARGS     0x1001
+#define ERR_BADFILE     0x1002
+#define ERR_MALLOC      0x1003
+#define ERR_INIT        0x1004
 
 /* Data typedefs */
 typedef int8_t  int8;
