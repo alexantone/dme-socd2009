@@ -70,7 +70,7 @@ typedef struct dme_message_s dme_message_t;
  *   |----------------------------------------------------------------------|
  * 4 |                            Time delta secs.                          |
  *   |----------------------------------------------------------------------|
- * 5 |                         Time delta micorsecs.                        |
+ * 5 |                         Time delta nanosecs.                         |
  *   +----------------------------------------------------------------------+
  * 
  */
@@ -81,7 +81,7 @@ struct sup_message_s {
     uint64      process_id;
     uint16      msg_type;
     uint32      sec_tdelta;
-    uint32      usec_tdelta;
+    uint32      nsec_tdelta;
 } PACKED;
 typedef struct sup_message_s sup_message_t;
 

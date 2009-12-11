@@ -7,6 +7,6 @@ BUILD_DIR=build
 
 for fx in $SRC ; do
 	bfx=$(basename $fx)
-	gcc -g -o build/${bfx/.c/} -Isrc $fx src/common/*.c
+	gcc -g -o build/${bfx/.c/} -Isrc $fx -lrt src/common/*.c
 done
 

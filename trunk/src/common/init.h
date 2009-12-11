@@ -30,9 +30,13 @@ typedef enum dme_evt_e {
 
 typedef int (ev_handler_fnct_t)(void * cookie);
 
-int  init_handlers(int sock);
-void register_event_handler(dme_ev_t event, ev_handler_fnct_t func);
-int  deliver_event(dme_ev_t event, void * cookie);
+extern int  init_handlers(int sock);
+extern int  deinit_handlers(void);
+extern void register_event_handler(dme_ev_t event, ev_handler_fnct_t func);
+
+extern int  deliver_event(dme_ev_t event, void * cookie);
+extern int  schedule_event (dme_ev_t event, uint32 secs, uint32 nsecs,void * cookie);
+
 void wait_events(void);
 
 
