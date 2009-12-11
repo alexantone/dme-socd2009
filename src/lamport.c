@@ -126,6 +126,8 @@ int process_ev_want_cr(void * cookie)
     int ret = 0;
     dme_message_t * msg = NULL;
     
+    dbg_msg("Entered DME_EV_WANT_CRITICAL_REG");
+    
     if (fsm_state != IDLE) {
         dbg_err("Fatal error: DME_EV_WANT_CRITICAL_REG occured while not in IDLE state.");
         return (ret = ERR_FATAL);
@@ -141,6 +143,8 @@ int process_ev_entered_cr(void * cookie)
 {
     int ret = 0;
     dme_message_t * msg = NULL;
+    
+    dbg_msg("Entered DME_EV_ENTERED_CRITICAL_REG");
     
     if (fsm_state != PENDING) {
         dbg_err("Fatal error: DME_EV_ENTERED_CRITICAL_REG occured while not in PENDING state.");
@@ -220,6 +224,9 @@ int main(int argc, char *argv[])
     register_event_handler(DME_EV_ENTERED_CRITICAL_REG, process_ev_entered_cr);
     register_event_handler(DME_EV_EXITED_CRITICAL_REG, process_ev_exited_cr);
 
+    schedule_event(DME_EV_WANT_CRITICAL_REG, 3, 0, NULL);
+    schedule_event(DME_EV_ENTERED_CRITICAL_REG, 6, 0, NULL);
+    
     /*
      * Main loop: just sit here and wait for interrups (triggered by the supervisor).
      * All work is done in interrupt handlers mapped to registered functions.
@@ -232,6 +239,7 @@ end:
     /*
      * Do cleanup (dealocating dynamic strucutres)
      */
+    deinit_handlers();
 
     /* Close our listening socket */
     if (nodes[proc_id].sock_fd > 0) {

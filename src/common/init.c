@@ -10,12 +10,25 @@
 
 #include <stdio.h>
 #include <signal.h>
+#include <time.h>
 #include <fcntl.h>
 #include <common/init.h>
 
 /* error handling for the main program */
 extern int    err_code;
 extern bool_t exit_request;
+
+/* Timers pool */
+#define MAX_TIMERS      (64)
+typedef enum timer_state {
+    TIMER_UNUSED = 0,
+    TIMER_DISARMED,
+    TIMER_ARMED,
+    TIMER_EXPIRED,
+} timer_state_t;
+
+static timer_t * timers_pool[MAX_TIMERS] = {};
+static timer_state_t timers_state[MAX_TIMERS] = {TIMER_UNUSED};
 
 
 typedef struct dme_ev_reg_s {
@@ -140,6 +153,63 @@ static void sig_handler(int sig, siginfo_t *siginfo, void * context)
     }
 }
 
+/*
+ * Returns a pointer to the first free timer in the pool or NULL otherwise. 
+ */
+static timer_t* get_free_timer(void) {
+    static uint16 last_timer = 0;
+    uint16 ix;
+    
+    do {
+        ix = last_timer;
+        if (timers_state[ix] == TIMER_UNUSED) {
+            last_timer = ix;
+            return timers_pool[ix];
+        }
+        ix++;
+    } while (ix != last_timer);
+}
+
+/*
+ * Helper function
+ */
+static void timer_expire_handler(sigval_t sval)
+{
+    sig_cookie_t * sc = sval.sival_ptr;
+    deliver_event(sc->sc_evt, sc->sc_cookie);
+    return;
+}
+
+/*
+ * Deliver an event after tdelta.
+ */
+int
+schedule_event (dme_ev_t event, uint32 secs, uint32 nsecs,void * cookie) {
+    int res = 0;
+    sigevent_t timer_expire_ev = {};
+    timer_t * tid = NULL;
+    struct itimerspec tspec = {};
+    
+    /* create container to transport the event and cookie */
+    sig_cookie_t * psc = malloc(sizeof(sig_cookie_t));
+    psc->sc_evt    = event;
+    psc->sc_cookie = cookie;
+    
+    timer_expire_ev.sigev_notify = SIGEV_THREAD;
+    timer_expire_ev.sigev_notify_function = timer_expire_handler;
+    timer_expire_ev.sigev_value.sival_ptr = psc;
+    
+    /* TODO:: Do timer_create and timer_set */
+    if (NULL != (tid = get_free_timer())) {
+        timer_create(CLOCK_MONOTONIC, &timer_expire_ev, tid);
+        tspec.it_value.tv_sec = secs;
+        tspec.it_value.tv_nsec = nsecs;
+        timer_settime(*tid, 0, &tspec, NULL);
+    }
+    
+    return res;
+}
+
 
 static void sigio_handler (int sig)
 {
@@ -156,12 +226,13 @@ int
 init_handlers (int sock)
 {
     int res = 0;
+    int ix = 0;
     
     
     sigemptyset(&SIGRTMINblock_set);
     sigaddset(&SIGRTMINblock_set, SIGRTMIN);
 
-    /* Register the SIGRTMIN general handler finction */
+    /* Register the SIGRTMIN general handler function */
     struct sigaction sa;
     sa.sa_sigaction = sig_handler;
     sa.sa_flags = SA_SIGINFO;
@@ -170,6 +241,11 @@ init_handlers (int sock)
     if (res = sigaction(SIGRTMIN, &sa, NULL) < 0) {
         dbg_err("Cound not register general handler for SIGRTMIN!");
         goto out;
+    }
+    
+    /* init timers */
+    for (ix = 0; ix < MAX_TIMERS; ix++) {
+        timers_pool[ix] = malloc(sizeof(timer_t));
     }
     
     /* Register handler for Network IO */
@@ -196,6 +272,16 @@ out:
     return res;
 }
 
+int
+deinit_handlers(void) {
+    /* deinit timers */
+    int ix = 0;
+    for (ix = 0; ix < MAX_TIMERS; ix++) {
+        timers_pool[ix] = malloc(sizeof(timer_t));
+    }
+    
+    return 0;
+}
 
 void wait_events(void)
 {

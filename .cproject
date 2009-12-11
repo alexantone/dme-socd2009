@@ -26,6 +26,7 @@
 <option id="gnu.c.compiler.option.include.paths.1377667866" name="Include paths (-I)" superClass="gnu.c.compiler.option.include.paths" valueType="includePath">
 <listOptionValue builtIn="false" value="&quot;${workspace_loc:/socd/src}&quot;"/>
 </option>
+<option id="gnu.c.compiler.option.preprocessor.def.symbols.723193411" name="Defined symbols (-D)" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols"/>
 <inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1122496973" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 </tool>
 <tool id="cdt.managedbuild.tool.gnu.c.linker.base.1641791119" name="GCC C Linker" superClass="cdt.managedbuild.tool.gnu.c.linker.base">
