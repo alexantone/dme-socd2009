@@ -175,6 +175,9 @@ int parse_file(const char * fname, proc_id_t p_id,
             dbg_msg("Found %d/%d links for process %d\n", jx, prc_count, ix);
         }
         
+        /* Set initial node state to IDLE */
+        cnode->state = PS_IDLE;
+        
         ix++;
     }
     fclose(fh);
@@ -212,7 +215,7 @@ int open_listen_socket (proc_id_t p_id, link_info_t * const nodes, size_t nodes_
     dbg_msg("The socket is open on fd %d", nodes[p_id].sock_fd);
     
     if (res = bind(nodes[p_id].sock_fd,
-                   &nodes[p_id].listen_addr,
+                   (const struct sockaddr *)&nodes[p_id].listen_addr,
                    sizeof(nodes[p_id].listen_addr))) {
         dbg_err("Could not bind socket.");
         goto end;

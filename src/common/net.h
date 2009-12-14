@@ -23,9 +23,15 @@ extern int dme_recv_msg(uint8 ** out_buff, size_t * out_len);
 
 extern int dme_broadcast_msg(uint8 * buff, size_t len);
 
+/* Message types for each algorithm */
+typedef enum msg_types_e {
+    MSGT_LAMPORT,
+} msg_type_t;
 
-
-/* The DME message format */
+/* 
+ * The DME message format
+ * Flags are not defined for now.
+ */
 /*
  *   0                8                 16                24                32 
  *   +- - - - - - - - + - - - - - - - - + - - - - - - - - + - - - - - - - - +
@@ -47,17 +53,23 @@ extern int dme_broadcast_msg(uint8 * buff, size_t len);
  */
 
 #define DME_MSG_MAGIC (0xDAAEAA59)  /* DMEMSG in 31137 speech :) (AA -> M) */
-struct dme_message_s {
+struct dme_message_hdr_s {
     uint32      dme_magic;
     uint64      process_id;
-    uint16      msg_type;
+    uint16      msg_type;               /* defines the type of the algorithm */
     uint16      flags;
-    uint16      length;
-    uint8       data[0];
+    uint16      length;                 /* length of the following data */
+    
+    /* A structure specific for each algorithm will start from here */
+    uint8       data[0]; 
 } PACKED;
-typedef struct dme_message_s dme_message_t;
+typedef struct dme_message_hdr_s dme_message_hdr_t;
 
-/* The superisor messages format */
+#define DME_MESSAGE_HEADER_LEN (sizeof(dme_message_hdr_t))
+
+
+
+/* The superisor messages format. It has fixed length */
 /*
  *   0                8                 16                24                32 
  *   |- - - - - - - - + - - - - - - - - + - - - - - - - - + - - - - - - - - |

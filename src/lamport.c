@@ -8,10 +8,12 @@
 
 #include <stdio.h>
 #include <unistd.h>
+#include <time.h>
 
 
 #include <common/defs.h>
 #include <common/init.h>
+#include <common/fsm.h>
 #include <common/util.h>
 #include <common/net.h>
 
@@ -28,29 +30,84 @@ bool_t exit_request = FALSE;
 
 static char * fname = NULL;
 
+/*
+ * Structure of the lamport DME message
+ */
+struct lamport_message_s {
+    dme_message_hdr_t lm_hdr;
+    uint32            tstamp_sec;
+    uint32            tstamp_nsec;
+    uint32            event;
+} PACKED;
+typedef struct lamport_message_s lamport_message_t;
+
+#define LAMPORT_MSG_LEN  (sizeof(lamport_message_t))
+#define LAMPORT_DATA_LEN (LAMPORT_MSG_LEN - DME_MESSAGE_HEADER_LEN)
+
+/*
+ * Helper functions.
+ */
+static void peer_msg_add_timestamp(lamport_message_t * msg) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    msg->tstamp_sec = ntohl((uint32)ts.tv_sec);
+    msg->tstamp_nsec = ntohl((uint32)ts.tv_nsec);
+}
+
+/*
+ * Informs all peers that something happened in this porcess's state.
+ */
+int peers_send_inform_message(dme_ev_t ev) {
+    lamport_message_t msg = {};
+    int err = 0;
+    
+    switch (ev) {
+    case DME_EV_WANT_CRITICAL_REG:
+    case DME_EV_EXITED_CRITICAL_REG:
+        /* Header section */
+        msg.lm_hdr.dme_magic = ntohl(DME_MSG_MAGIC);
+        msg.lm_hdr.msg_type = ntohs(MSGT_LAMPORT);
+        msg.lm_hdr.length = ntohs(LAMPORT_MSG_LEN);
+        msg.lm_hdr.flags = 0;
+        msg.lm_hdr.process_id = ntohq(proc_id);
+        
+        /* lamport specific section */
+        msg.event = ev;
+        peer_msg_add_timestamp(&msg);
+        
+        /* send the message */
+        err = dme_broadcast_msg((uint8*)&msg, LAMPORT_MSG_LEN);
+        
+        break;
+    default:
+        /* No nedd to send informs to peers in other cases */
+        break;
+    }
+    
+    return err;
+}
+
 /* 
  * Event handler functions.
- * These functions must properly free the cookie revieved.
+ * These functions must properly free the cookie recieved, except fo the
+ * DME_EV_SUP_MSG_IN and DME_EV_PEER_MSG_IN.
  */
 
-enum dme_lamport_states {
-    IDLE,
-    PENDING,
-    EXECUTING,
-};
+static int fsm_state = PS_IDLE;
 
-static int fsm_state = IDLE;
-
-
-static int supervisor_msg_in(const uint8 * const buff, const int len) {
+static int handle_supervisor_msg(void * cookie) {
+    dbg_msg("");
     int ret = 0;
+    const buff_t * buff = (buff_t *)cookie; 
     
     switch(fsm_state) {
-    case IDLE:
+    case PS_IDLE:
+        ret = peers_send_inform_message(DME_EV_WANT_CRITICAL_REG);
         break;
+
     /* The supervisor should not send a message in these states */
-    case PENDING:
-    case EXECUTING:
+    case PS_PENDING:
+    case PS_EXECUTING:
         dbg_msg("Ignoring message from supervisor (not in IDLE state).");
         break;
     default:
@@ -64,15 +121,17 @@ static int supervisor_msg_in(const uint8 * const buff, const int len) {
 
 
 /* This is the algortihm's implementation */
-static int peer_msg_in(const uint8 * const buff, const int len) {
+static int handle_peer_msg(void * cookie) {
+    dbg_msg("");
     int ret = 0;
+    const buff_t * buff = (buff_t *)cookie; 
     
     switch(fsm_state) {
-    case IDLE:
+    case PS_IDLE:
         break;
-    case PENDING:
+    case PS_PENDING:
         break;
-    case EXECUTING:
+    case PS_EXECUTING:
         break;
     default:
         dbg_err("Fatal error: FSM state corrupted");
@@ -83,76 +142,41 @@ static int peer_msg_in(const uint8 * const buff, const int len) {
     return ret;
 }
 
-/*
- * msg_demux()
- * 
- * Checks the source of the message (peer/supervisor) and calls the coresponding
- * processing routine.
- */
-int msg_demux(void * cookie)
-{
-    int ret = 0;
-    proc_id_t source_pid;
-    uint8 *buff = NULL;
-    int len = 0;
-    
-    dbg_msg("A message arrived from the depths of internet! cookie='%s'", (char *)cookie);
-    
-    /* get the contents of the message */
-    if (0 != (ret = dme_recv_msg(&buff, &len))) {
-        return ret;
-    }
-    
-    /* check the source of the message */
-    source_pid = ntohq(*(uint64 *)buff);
-    
-    if (source_pid == 0) {
-        /* This is from the supervisor*/
-        ret = supervisor_msg_in(buff, len);
-    } else if (source_pid >= 1 && source_pid <= nodes_count) {
-        ret = peer_msg_in(buff, len);
-    } else {
-        dbg_err("Recieved possibly malformed messge:"\
-                " 'Process ID'=%llu out of bounds", source_pid);
-        ret = ERR_FATAL;
-    }
-    
-    safe_free(buff);
-    return ret;
-}
 
 int process_ev_want_cr(void * cookie)
 {
+    dbg_msg("");
     int ret = 0;
-    dme_message_t * msg = NULL;
+    lamport_message_t * msg = NULL;
     
     dbg_msg("Entered DME_EV_WANT_CRITICAL_REG");
     
-    if (fsm_state != IDLE) {
+    if (fsm_state != PS_IDLE) {
         dbg_err("Fatal error: DME_EV_WANT_CRITICAL_REG occured while not in IDLE state.");
         return (ret = ERR_FATAL);
     }
     
     /* TODO: Switch to the pending state and mark the time */
-    fsm_state = PENDING;
+    fsm_state = PS_PENDING;
     
     return ret;
 }
 
 int process_ev_entered_cr(void * cookie)
 {
+    dbg_msg("");
     int ret = 0;
-    dme_message_t * msg = NULL;
+    lamport_message_t * msg = NULL;
     
     dbg_msg("Entered DME_EV_ENTERED_CRITICAL_REG");
     
-    if (fsm_state != PENDING) {
+    if (fsm_state != PS_PENDING) {
         dbg_err("Fatal error: DME_EV_ENTERED_CRITICAL_REG occured while not in PENDING state.");
         return (ret = ERR_FATAL);
     }
     
     /* Switch to the executing state */
-    fsm_state = EXECUTING;
+    fsm_state = PS_EXECUTING;
     
     /* 
      * TODO: Start a timer that will expire after the tdelta recieved from the supervisor
@@ -167,15 +191,16 @@ int process_ev_entered_cr(void * cookie)
 int process_ev_exited_cr(void * cookie)
 {
     int ret = 0;
-    dme_message_t * msg = NULL;
+    lamport_message_t * msg = NULL;
+    dbg_msg("");
     
-    if (fsm_state != EXECUTING) {
+    if (fsm_state != PS_EXECUTING) {
         dbg_err("Fatal error: DME_EV_EXITED_CRITICAL_REG occured while not in EXECUTING state.");
         return (ret = ERR_FATAL);
     }
     
     /* Switch to the executing state */
-    fsm_state = IDLE;
+    fsm_state = PS_IDLE;
     
     /* TODO: inform the supervisor and peers that the critical region is now free */
     
@@ -219,21 +244,17 @@ int main(int argc, char *argv[])
         goto end;
     }
     
-    register_event_handler(DME_EV_MSG_IN, msg_demux);
+    register_event_handler(DME_EV_SUP_MSG_IN, handle_supervisor_msg);
+    register_event_handler(DME_EV_PEER_MSG_IN, handle_peer_msg);
     register_event_handler(DME_EV_WANT_CRITICAL_REG, process_ev_want_cr);
     register_event_handler(DME_EV_ENTERED_CRITICAL_REG, process_ev_entered_cr);
     register_event_handler(DME_EV_EXITED_CRITICAL_REG, process_ev_exited_cr);
 
-    schedule_event(DME_EV_WANT_CRITICAL_REG, 3, 0, NULL);
-    schedule_event(DME_EV_ENTERED_CRITICAL_REG, 6, 0, NULL);
-    
     /*
      * Main loop: just sit here and wait for interrups (triggered by the supervisor).
      * All work is done in interrupt handlers mapped to registered functions.
      */
-    while(!exit_request) {
-        wait_events();
-    }
+    wait_events();
     
 end:
     /*
@@ -247,7 +268,6 @@ end:
     }
     
     safe_free(nodes);
-    safe_free(nodes); /* test safe_free() on NULL pouinter */
     
     return res;
 }

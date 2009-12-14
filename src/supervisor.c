@@ -8,12 +8,14 @@
 
 #include <stdio.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 
 #include <common/defs.h>
 #include <common/init.h>
 #include <common/util.h>
 #include <common/net.h>
+#include <common/fsm.h>
 
 /* 
  * global vars, defined in each app
@@ -29,15 +31,12 @@ bool_t exit_request = FALSE;
 
 static char * fname = NULL;
 
-static bool_t creg_is_free = TRUE;
-
-
 /* 
  * trigger_critical_region()
  * 
  * Trigger request of the critical region for a certain process.
  * Once entered the critical region, that process will stay there
- * for the specified ammount of time.
+ * for the specified ammount of time as sec and nanosec.
  */
 static int trigger_critical_region (proc_id_t dest_pid,
                                     uint32 sec_delta, uint32 nsec_delta) {
@@ -54,28 +53,71 @@ static int trigger_critical_region (proc_id_t dest_pid,
     return dme_send_msg(dest_pid, buff, SUPERVISOR_MESSAGE_LENGTH);
 }
 
+/*
+ * Returns a random pid.
+ */
+proc_id_t get_random_pid() {
+    int ix = 0;
+    
+    /* get a value in 1 .. nodes_count */
+    ix = 1 + random() % nodes_count;
+    return nodes[ix].proc_id;
+    
+}
 
+static unsigned int max_concurrent_proc = 3;
 /* 
  * Event handler functions.
  * These functions must properly free the cookie revieved.
  */
 int do_work(void * cookie) {
+    int concurrent_count = random() % max_concurrent_proc;
+    proc_id_t pid_arr[concurrent_count];
+    proc_id_t tpid;
+    bool_t found;
+    int ix;
+    int jx;
     
     /* If the critical region is free, elect processes to compete for it */
-    if (creg_is_free) {
-        trigger_critical_region(1,5,0);
+    if (critical_region_is_idlle() && concurrent_count > 0) {
+        /* build the list of competing processes */
+        ix = 0;
+        while (ix < concurrent_count) {
+            tpid = get_random_pid();
+            
+            /* Avoid duplicates */
+            found = FALSE;
+            for(jx = 0; jx < ix && !found; jx++) {
+                if (pid_arr[jx] == tpid) {
+                    found = TRUE;
+                }
+            }
+            
+            /* 
+             * This process id was not elected before. Add it to te list.
+             * Else replay the loop.
+             */
+            if (!found) {
+                pid_arr[ix] = tpid;
+                ix++;
+            }
+        }
+        
+        /* Trigger the elected processes to compete for the critical region */
+        for (ix = 0; ix < concurrent_count; ix++) {
+            trigger_critical_region(pid_arr[ix],5,0);
+        }
     }
     
     
-    sleep(5);
     /* reschedule this process */
-    deliver_event(DME_SEV_PERIODIC_WORK, NULL);
+    schedule_event(DME_SEV_PERIODIC_WORK, 5, 0, NULL);
 }
 
+/* Process incomming messages */
 int process_messages(void * cookie)
 {
-    uint8 *buff = NULL;
-    int len = 0;
+    buff_t buff = {NULL, 0};
 
     
     return 0;
@@ -130,9 +172,7 @@ int main(int argc, char *argv[])
      * All work is done in interrupt handlers mapped to registered functions.
      */
     deliver_event(DME_SEV_PERIODIC_WORK, NULL);
-    while(!exit_request) {
-        wait_events();
-    }
+    wait_events();
     
 end:
     /*
