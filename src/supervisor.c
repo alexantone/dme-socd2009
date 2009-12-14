@@ -65,11 +65,13 @@ proc_id_t get_random_pid() {
     
 }
 
-static unsigned int max_concurrent_proc = 3;
 /* 
  * Event handler functions.
  * These functions must properly free the cookie revieved.
  */
+
+static unsigned int max_concurrent_proc = 3;
+
 int do_work(void * cookie) {
     int concurrent_count = random() % max_concurrent_proc;
     proc_id_t pid_arr[concurrent_count];
@@ -118,7 +120,7 @@ int do_work(void * cookie) {
 int process_messages(void * cookie)
 {
     buff_t buff = {NULL, 0};
-
+    /* TODO: */
     
     return 0;
 }
@@ -166,12 +168,15 @@ int main(int argc, char *argv[])
     
     register_event_handler(DME_SEV_PERIODIC_WORK, do_work);
     register_event_handler(DME_SEV_MSG_IN, process_messages);
-    
+
+    /* wait for peers processes to init, then kick start the supervisor */
+    sleep(5);
+    deliver_event(DME_SEV_PERIODIC_WORK, NULL);
+
     /*
      * Main loop: just sit here and wait for interrups.
      * All work is done in interrupt handlers mapped to registered functions.
      */
-    deliver_event(DME_SEV_PERIODIC_WORK, NULL);
     wait_events();
     
 end:
