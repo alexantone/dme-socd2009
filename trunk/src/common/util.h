@@ -20,8 +20,16 @@
 /*
  * Export functions in "util.c" to be available for other modules.
  */
-extern int parse_params(int argc, char * argv[],
-                  uint64 *out_proc_id, char ** out_fname);
+
+extern int parse_peer_params(int argc, char * argv[],
+                             uint64 *out_proc_id,
+                             char ** out_fname);
+
+extern int parse_sup_params(int argc, char * argv[],
+                            char ** out_fname,
+                            uint32 *out_concurency_ratio,
+                            uint32 *out_election_interval);
+
 extern int parse_file(const char * fname, proc_id_t p_id,
                link_info_t * out_nodes[], size_t * out_nodes_count);
 

@@ -31,6 +31,10 @@ bool_t exit_request = FALSE;
 
 static char * fname = NULL;
 
+static unsigned int election_interval = 10;     /* time in seconds to rerun election */
+static unsigned int concurency_ratio = 50;      /* value in percent of total processes */
+static unsigned int max_concurrent_proc = 0;    /* This will be computed in main() */
+
 /* 
  * trigger_critical_region()
  * 
@@ -70,10 +74,8 @@ proc_id_t get_random_pid() {
  * These functions must properly free the cookie revieved.
  */
 
-static unsigned int max_concurrent_proc = 3;
-
 int do_work(void * cookie) {
-    int concurrent_count = random() % max_concurrent_proc;
+    int concurrent_count = random() % (max_concurrent_proc + 1);
     proc_id_t pid_arr[concurrent_count];
     proc_id_t tpid;
     bool_t found;
@@ -107,13 +109,17 @@ int do_work(void * cookie) {
         
         /* Trigger the elected processes to compete for the critical region */
         for (ix = 0; ix < concurrent_count; ix++) {
+            dbg_msg("elected pid[%d] = %llu ", ix, pid_arr[ix]);
+        }
+
+        for (ix = 0; ix < concurrent_count; ix++) {
             trigger_critical_region(pid_arr[ix],5,0);
         }
     }
     
     
     /* reschedule this process */
-    schedule_event(DME_SEV_PERIODIC_WORK, 5, 0, NULL);
+    schedule_event(DME_SEV_PERIODIC_WORK, election_interval, 0, NULL);
 }
 
 /* Process incomming messages */
@@ -130,25 +136,29 @@ int main(int argc, char *argv[])
     FILE *fh;
     int res = 0;
     
-    if (0 != (res = parse_params(argc, argv, &proc_id, &fname))) {
+    if (0 != (res = parse_sup_params(argc, argv, &fname,
+                                     &concurency_ratio, &election_interval))) {
         dbg_err("parse_args() returned nonzero status:%d", res);
-        goto end;
-    }
-       
-    if (proc_id != 0) {
-        dbg_err("Supervisor must allways have proc_id = 0");
         goto end;
     }
 
     /*
-     * Parse the file in fname
+     * Parse the file fname
      */
     if (0 != (res = parse_file(fname, proc_id, &nodes, &nodes_count))) {
         dbg_err("parse_file() returned nonzero status:%d", res);
         goto end;
     }
     dbg_msg("nodes has %d elements", nodes_count);
-    
+
+    /* compute the number of maximum concurrent processes (nearest integer) */
+    max_concurrent_proc = (nodes_count * concurency_ratio + 50) / 100;
+    if (max_concurrent_proc < 2) {
+        dbg_err("concurency ratio set too low. At least 2 processes must be concurent.");
+        goto end;
+    } else {
+        dbg_msg("max_concurrent_proc=%d", max_concurrent_proc);
+    }
     
     /*
      * Init connections (open listenning socket)
@@ -171,6 +181,7 @@ int main(int argc, char *argv[])
 
     /* wait for peers processes to init, then kick start the supervisor */
     sleep(5);
+    
     deliver_event(DME_SEV_PERIODIC_WORK, NULL);
 
     /*
@@ -186,12 +197,11 @@ end:
     deinit_handlers();
 
     /* Close our listening socket */
-    if (nodes[proc_id].sock_fd > 0) {
+    if (nodes && nodes[proc_id].sock_fd > 0) {
         close(nodes[proc_id].sock_fd);
     }
     
     safe_free(nodes);
-    safe_free(nodes); /* test safe_free() on NULL pouinter */
     
     return res;
 }

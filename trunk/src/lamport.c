@@ -213,7 +213,7 @@ int main(int argc, char *argv[])
     FILE *fh;
     int res = 0;
     
-    if (0 != (res = parse_params(argc, argv, &proc_id, &fname))) {
+    if (0 != (res = parse_peer_params(argc, argv, &proc_id, &fname))) {
         dbg_err("parse_args() returned nonzero status:%d", res);
         goto end;
     }
@@ -263,7 +263,7 @@ end:
     deinit_handlers();
 
     /* Close our listening socket */
-    if (nodes[proc_id].sock_fd > 0) {
+    if (nodes && nodes[proc_id].sock_fd > 0) {
         close(nodes[proc_id].sock_fd);
     }
     

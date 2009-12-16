@@ -65,7 +65,7 @@ typedef enum dme_evt_e {
     DME_EV_EXITED_CRITICAL_REG,
 
     /* These events are used by the supervisor */
-#define DME_SEV_MSG_IN DME_EV_PEER_MSG_IN   /* the supervisor recieves messages from peers only */
+#define DME_SEV_MSG_IN DME_EV_SUP_MSG_IN   /* the supervisor uses only SUP messages */
     DME_SEV_PERIODIC_WORK,
     
     /* 
