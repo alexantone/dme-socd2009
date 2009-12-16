@@ -21,6 +21,7 @@ extern const proc_id_t proc_id;
  */
 int dme_send_msg(proc_id_t dest, uint8 * buff, size_t len)
 {
+    dbg_msg("(proc_id_t dest = %llu, uint8 * buff , size_t len = %d)", dest, len);
     int maxcount = nodes_count;
     struct sockaddr * dest_addr = NULL;
     

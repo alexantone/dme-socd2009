@@ -14,18 +14,18 @@
 /*
  * getopt() defines and lib variables
  */
-#define OPT_STRING "i:f:"
 
 extern char *optarg;
 extern int optind, opterr, optopt;
 
 
-#define USAGE_MESSAGE \
+#define PEER_USAGE_MESSAGE \
 "Usage:\n"\
 "       <algorithm-name>  -i <process-id> -f <config-file>\n"
 
-int parse_params(int argc, char ** argv,
-                 proc_id_t *out_proc_id, char ** out_fname)
+#define PEER_OPT_STRING "i:f:"
+int parse_peer_params(int argc, char ** argv,
+                      proc_id_t *out_proc_id, char ** out_fname)
 {
     char optchar = '\0';
     bool_t file_provided = FALSE;
@@ -35,7 +35,7 @@ int parse_params(int argc, char ** argv,
         return 1;
     }
 
-    while ((optchar = getopt(argc, argv, OPT_STRING)) != -1) {
+    while ((optchar = getopt(argc, argv, PEER_OPT_STRING)) != -1) {
         switch(optchar) {
         case 'i':
             *out_proc_id = strtoull(optarg, NULL, BASE_10);
@@ -49,7 +49,7 @@ int parse_params(int argc, char ** argv,
 
         default:
             /* Print usage */
-            fprintf(stdout, USAGE_MESSAGE);
+            fprintf(stdout, PEER_USAGE_MESSAGE);
             exit(ERR_BADARGS);
             break;
         }
@@ -57,11 +57,75 @@ int parse_params(int argc, char ** argv,
     
     if (!(procid_provided && file_provided)) {
             /* Print usage */
-            fprintf(stdout, USAGE_MESSAGE);
+            fprintf(stdout, PEER_USAGE_MESSAGE);
             exit(ERR_BADARGS);
     }
     
     dbg_msg("proc_id=%llu file=%s", *out_proc_id, *out_fname);
+    
+    return 0;
+}
+
+#define SUPERVISOR_USAGE_MESSAGE \
+"Usage:\n"\
+"       supervisor -f <config-file> [-r <concurency ratio>] [-t <sec interval>]\n"
+
+
+#define SUPERVISOR_OPT_STRING "f:t:r:"
+extern int parse_sup_params(int argc, char * argv[],
+                            char ** out_fname,
+                            uint32 *out_concurency_ratio,
+                            uint32 *out_election_interval)
+{
+    char optchar = '\0';
+    bool_t file_provided = FALSE;
+    int testval;
+    bool_t err = FALSE;
+    
+    if (!out_fname || !out_concurency_ratio || !out_election_interval) {
+        return 1;
+    }
+
+    while ((optchar = getopt(argc, argv, SUPERVISOR_OPT_STRING)) != -1) {
+        switch(optchar) {
+        case 'f':
+            *out_fname = optarg;
+            file_provided = TRUE;
+            break;
+
+        case 'r':
+            testval = strtoul(optarg, NULL, BASE_10);
+            if (testval < 0 || testval > 100) {
+                fprintf(stderr, "Concurency ratio must be in percent: (0..100).\n");
+                err = TRUE;
+            } else {
+                *out_concurency_ratio = testval;
+            }
+            break;
+
+        case 't':
+            testval = strtoul(optarg, NULL, BASE_10);
+            if (testval < 5 || testval > 300) {
+                fprintf(stderr, "Election period must be in (5..300).\n");
+                err = TRUE;
+            } else {
+                *out_election_interval = testval;
+            }
+            break;
+
+        default:
+            /* Print usage */
+            fprintf(stdout, SUPERVISOR_USAGE_MESSAGE);
+            exit(ERR_BADARGS);
+            break;
+        }
+    }
+    
+    if (!file_provided || err) {
+            /* Print usage */
+            fprintf(stdout, SUPERVISOR_USAGE_MESSAGE);
+            exit(ERR_BADARGS);
+    }
     
     return 0;
 }
@@ -115,7 +179,7 @@ int parse_file(const char * fname, proc_id_t p_id,
     
     dbg_msg("Trying to allocate nodes[%d] of size %d * %d",
             prc_count, prc_count, sizeof(link_info_t));
-    if (!(*out_nodes = (link_info_t *)calloc(prc_count, sizeof(link_info_t)))) {
+    if (!(*out_nodes = (link_info_t *)calloc(prc_count + 1, sizeof(link_info_t)))) {
         dbg_err("Could not allocate the nodes matrix");
         fclose(fh);
         return ERR_MALLOC;
@@ -143,6 +207,7 @@ int parse_file(const char * fname, proc_id_t p_id,
 
         jx = 0;
         cnode = (*out_nodes) + ix;
+        cnode->proc_id = ix;
         dbg_msg("cnode: offset from start of array is %4d bytes", (void*)cnode - (void*)(*out_nodes));
 
         /* Parse the IP */
@@ -198,7 +263,7 @@ int parse_file(const char * fname, proc_id_t p_id,
 int open_listen_socket (proc_id_t p_id, link_info_t * const nodes, size_t nodes_count)
 {
     int res = 0;
-    int max_nodes = nodes_count -1;
+    int max_nodes = nodes_count;
     
     if (p_id < 0 || p_id > max_nodes) {
         dbg_err("process id out of bounds: %llu not int [0..%d]", p_id, max_nodes);
