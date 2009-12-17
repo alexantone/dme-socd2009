@@ -89,4 +89,85 @@ int dme_recv_msg(uint8 ** out_buff, size_t * out_len)
     return 0;
 }
 
+/*
+ * Prepare a DME message header for network sending.
+ */
+int dme_header_set(dme_message_hdr_t * const hdr, unsigned int msgtype,
+                   unsigned int msglen, unsigned int flags)
+{
+    if (!hdr) {
+        return ERR_DME_HDR;
+    }
+
+    hdr->dme_magic = htonl(DME_MSG_MAGIC);
+    hdr->process_id = htonq(proc_id);
+    hdr->msg_type = htons((uint16)msgtype);
+    hdr->length = htons((uint16)msglen);
+    hdr->flags = htons((uint16)flags);;
+    
+    return 0;
+}
+
+/*
+ * Prepare a SUP message for network sending.
+ */
+int sup_msg_set(sup_message_t * const msg, unsigned int msgtype,
+                uint32 sec_delta, uint32 nsec_delta, unsigned int flags)
+{
+    if (!msg) {
+        return ERR_SUP_HDR;
+    }
+
+    msg->sup_magic = htonl(SUP_MSG_MAGIC);
+    msg->process_id = htonq(proc_id);
+    msg->msg_type = htons((uint16)msgtype);
+    msg->sec_tdelta = htonl(sec_delta);
+    msg->nsec_tdelta = htonl(nsec_delta);
+    msg->flags = htonl((uint16)flags);
+    
+    return 0;
+}
+
+/*
+ * Parse a recieved DME message. The space must be allready allocated in 'hdr'.
+ */
+int dme_header_parse(buff_t buff, dme_message_hdr_t * const msg)
+{
+    dme_message_hdr_t * src = (dme_message_hdr_t *)buff.data;
+
+    if (!msg || buff.data == NULL || buff.len < DME_MESSAGE_HEADER_LEN) {
+        return ERR_DME_HDR;
+    }
+
+    msg->dme_magic = ntohl(src->dme_magic);
+    msg->process_id = ntohq(src->process_id);
+    msg->msg_type = ntohs(src->msg_type);
+    msg->length = ntohs(src->length);
+    msg->flags = ntohs(src->flags);;
+    
+    return 0;
+}
+
+/*
+ * Parse a recieved SUP message. The space must be allready allocated in 'msg'.
+ */
+int sup_msg_parse(buff_t buff, sup_message_t * const msg)
+{
+    sup_message_t * src = (sup_message_t *)buff.data;
+
+    if (!msg || buff.data == NULL || buff.len < SUPERVISOR_MESSAGE_LENGTH) {
+        return ERR_SUP_HDR;
+    }
+
+    msg->sup_magic = ntohl(src->sup_magic);
+    msg->process_id = ntohq(src->process_id);
+    msg->msg_type = ntohs(src->msg_type);
+    msg->sec_tdelta = ntohl(src->sec_tdelta);
+    msg->nsec_tdelta = ntohl(src->nsec_tdelta);
+    msg->flags = ntohl(src->flags);
+    
+    return 0;
+}
+
+
 

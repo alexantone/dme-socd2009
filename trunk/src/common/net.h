@@ -92,6 +92,7 @@ struct sup_message_s {
     uint32      sup_magic;
     uint64      process_id;
     uint16      msg_type;
+    uint16      flags;
     uint32      sec_tdelta;
     uint32      nsec_tdelta;
 } PACKED;
@@ -99,5 +100,14 @@ typedef struct sup_message_s sup_message_t;
 
 #define SUPERVISOR_MESSAGE_LENGTH (sizeof(struct sup_message_s))
 
+
+extern int dme_header_set(dme_message_hdr_t * const hdr, unsigned int msgtype,
+                          unsigned int msglen, unsigned int flags);
+
+extern int sup_msg_set(sup_message_t * const msg, unsigned int msgtype,
+                       uint32 sec_delta, uint32 nsec_delta, unsigned int flags);
+
+extern int dme_header_parse(buff_t buff, dme_message_hdr_t * const msg);
+extern int sup_msg_parse(buff_t buff, sup_message_t * const msg);
 
 #endif /* NET_H_ */
