@@ -47,12 +47,7 @@ static int trigger_critical_region (proc_id_t dest_pid,
     sup_message_t msg = {};
     uint8 * buff = (uint8 *) &msg;
     
-    /* convert the parameters to network order */
-    msg.sup_magic = htonl(SUP_MSG_MAGIC);
-    msg.process_id = htonq(proc_id);
-    msg.msg_type = htons(DME_EV_WANT_CRITICAL_REG);
-    msg.sec_tdelta = htonl(sec_delta);
-    msg.nsec_tdelta = htonl(nsec_delta);
+    sup_msg_set(&msg, DME_EV_WANT_CRITICAL_REG, sec_delta, nsec_delta, 0);
     
     return dme_send_msg(dest_pid, buff, SUPERVISOR_MESSAGE_LENGTH);
 }

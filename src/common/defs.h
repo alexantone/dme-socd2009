@@ -23,6 +23,8 @@
 #define ERR_BAD_PEER_ID     0x1004
 #define ERR_SEND_MSG        0x1005
 #define ERR_RECV_MSG        0x1006
+#define ERR_DME_HDR         0x1007
+#define ERR_SUP_HDR         0x1008
 
 /* Errors above ERR_FATAL force quitting the program */
 #define ERR_FATAL       0x2000
