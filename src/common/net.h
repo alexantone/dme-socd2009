@@ -54,7 +54,7 @@ typedef enum msg_types_e {
 
 #define DME_MSG_MAGIC (0xDAAEAA59)  /* DMEMSG in 31137 speech :) (AA -> M) */
 struct dme_message_hdr_s {
-    uint32      dme_magic;
+    uint32      dme_magic;              /* DME magic checksum */
     uint64      process_id;
     uint16      msg_type;               /* defines the type of the algorithm */
     uint16      flags;
@@ -89,9 +89,9 @@ typedef struct dme_message_hdr_s dme_message_hdr_t;
 
 #define SUP_MSG_MAGIC (0x500FAA59)  /* SUPMSG (SOOFMSg) in 31137 speech :) */
 struct sup_message_s {
-    uint32      sup_magic;
-    uint64      process_id;
-    uint16      msg_type;
+    uint32      sup_magic;      /* supervisor magic checksum */
+    uint64      process_id;     
+    uint16      msg_type;       /* The event triggered/occured */
     uint16      flags;
     uint32      sec_tdelta;
     uint32      nsec_tdelta;
