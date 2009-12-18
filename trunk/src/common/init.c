@@ -173,10 +173,10 @@ static void timer_expire_handler(int sig, siginfo_t *siginfo, void * context)
     }
     
     sig_timer_cookie_t * stc = siginfo->si_ptr;
-    deliver_event(stc->stc_evt, stc->stc_cookie);
     dbg_msg("timer_idx=%d", stc->stc_timer_idx);
-    timer_delete(timers_pool[stc->stc_timer_idx]);
     timers_state[stc->stc_timer_idx] = TIMER_UNUSED;
+    timer_delete(timers_pool[stc->stc_timer_idx]);
+    deliver_event(stc->stc_evt, stc->stc_cookie);
     safe_free(stc);
     
     return;
@@ -269,7 +269,7 @@ register_event_handler (dme_ev_t event, ev_handler_fnct_t func)
 int
 deliver_event (dme_ev_t event, void * cookie)
 {
-    dbg_msg("event = %d", event);
+    dbg_msg("event = %d cookie@%p", event, cookie);
     /*
      * sigqueue the stuff
      */
@@ -291,7 +291,7 @@ deliver_event (dme_ev_t event, void * cookie)
  */
 int
 schedule_event (dme_ev_t event, uint32 secs, uint32 nsecs,void * cookie) {
-    dbg_msg("");
+    dbg_msg("Schedule event=%d in %u.%u with cookie@%p", event, secs, nsecs, cookie);
     int res = 0;
     sigevent_t timer_expire_ev = {};
     timer_t * tp = NULL;
@@ -360,7 +360,7 @@ init_handlers (int sock)
     struct sigaction deliver_ev_sa;
     deliver_ev_sa.sa_sigaction = deliver_event_handler;
     deliver_ev_sa.sa_flags = SA_SIGINFO;
-    deliver_ev_sa.sa_mask = SIGRTMINblock_set;
+    //deliver_ev_sa.sa_mask = SIGRTMINblock_set;
     
     if (res = sigaction(SIGRTMIN, &deliver_ev_sa, NULL) < 0) {
         dbg_err("Cound not register handler for SIGRTMIN!");
