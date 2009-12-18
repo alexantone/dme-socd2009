@@ -109,6 +109,7 @@ int do_work(void * cookie) {
 
         for (ix = 0; ix < concurrent_count; ix++) {
             trigger_critical_region(pid_arr[ix],5,0);
+            nodes[pid_arr[ix]].state = PS_PENDING;
         }
     }
     
@@ -120,8 +121,34 @@ int do_work(void * cookie) {
 /* Process incomming messages */
 int process_messages(void * cookie)
 {
-    buff_t buff = {NULL, 0};
-    /* TODO: */
+    dbg_msg("");
+    sup_message_t srcmsg = {};
+    int err = 0;
+    
+    if (err = sup_msg_parse(*(buff_t *)cookie, &srcmsg)) {
+        return err;
+    }
+    
+    switch(srcmsg.msg_type) {
+    case DME_EV_ENTERED_CRITICAL_REG:
+        nodes[srcmsg.process_id].state = PS_EXECUTING;
+        dbg_msg("ENTERED CS: process %llu waited for %u.%09u seconds to enter the CS",
+                srcmsg.process_id, srcmsg.sec_tdelta, srcmsg.nsec_tdelta);
+        if (!critical_region_is_sane()) {
+            dbg_err("Unfortunately there are multiple processes in the CS at the same time!");
+            err = ERR_FATAL;
+        }
+        break;
+        
+    case DME_EV_EXITED_CRITICAL_REG:
+        nodes[srcmsg.process_id].state = PS_IDLE;
+        dbg_msg("EXITED CS: process %llu stayed for %u.%09u seconds in it's CS",
+                srcmsg.process_id, srcmsg.sec_tdelta, srcmsg.nsec_tdelta);
+        break;
+    default:
+        /* Other types are invalid */
+        break;
+    }
     
     return 0;
 }
