@@ -30,6 +30,7 @@ bool_t exit_request = FALSE;
 
 static char * fname = NULL;
 static struct timespec sup_tstamp;      /* used for performance measurements */
+static uint32 critical_region_simulated_duration = 0;
 
 /*
  * Lamport specifics
@@ -87,10 +88,14 @@ static void request_queue_insert(request_queue_elem_t * const elmt) {
     request_queue_elem_t * cx = request_queue;  /* current element */
     request_queue_elem_t * px = request_queue;  /* previous element */
     /* if queue is empty just create the queue */
+    dbg_msg("the top of the queue is at %p and has a pid of %llu",
+            request_queue, request_queue ? request_queue->pid : 0);
     if (!request_queue) {
         request_queue = elmt;
         request_queue->next = NULL;
         return;
+        dbg_msg("the top of the queue is at %p and has a pid of %llu",
+                request_queue, request_queue ? request_queue->pid : 0);
     }
     
     /* search for the right spot to insert this element */
@@ -108,14 +113,22 @@ static void request_queue_insert(request_queue_elem_t * const elmt) {
         px->next = elmt;
         elmt->next = cx;
     }
+    dbg_msg("the top of the queue is at %p and has a pid of %llu",
+            request_queue, request_queue ? request_queue->pid : 0);
 }
 
 static void request_queue_pop(void){
     request_queue_elem_t * px = request_queue;
+    
+    dbg_msg("the top of the queue is at %p and has a pid of %llu",
+            request_queue, request_queue ? request_queue->pid : 0);
+
     if (request_queue) {
         request_queue = request_queue->next;
         safe_free(px);
     }
+    dbg_msg("the top of the queue is at %p and has a pid of %llu",
+            request_queue, request_queue ? request_queue->pid : 0);
 }
 
 /* 
@@ -128,11 +141,18 @@ static bool_t my_turn(void) {
     for (ix = 1; ix < proc_id && keep_going; ix++) {
         keep_going = keep_going && replies[ix];
     }
+    
+    dbg_msg("Passed first part");
+    
     for (ix = proc_id + 1; ix <= nodes_count && keep_going; ix++) {
         keep_going = keep_going && replies[ix];
     }
     
+    dbg_msg("Passed second part");
+    
     /* If all preers replied and we're on top then it's our turn */
+    dbg_msg("the top of the queue is at %p and has a pid of %llu",
+            request_queue, request_queue ? request_queue->pid : 0);
     return (keep_going && (request_queue && request_queue->pid == proc_id));
 }
 
@@ -231,6 +251,7 @@ static int handle_supervisor_msg(void * cookie) {
     int ret = 0;
     int ix;
     const buff_t * buff = (buff_t *)cookie; 
+    sup_message_t srcmsg = {};
     
     if (!buff) {
         dbg_err("Message is empty!");
@@ -241,6 +262,8 @@ static int handle_supervisor_msg(void * cookie) {
     case PS_IDLE:
         /* record the time */
         clock_gettime(CLOCK_REALTIME, &sup_tstamp);
+        sup_msg_parse(*buff, &srcmsg);
+        critical_region_simulated_duration = srcmsg.sec_tdelta;
 
         deliver_event(DME_EV_WANT_CRITICAL_REG, NULL);
 
@@ -267,6 +290,7 @@ static int handle_peer_msg(void * cookie) {
     request_queue_elem_t * req = NULL;
     int ret = 0;
     const buff_t * buff = (buff_t *)cookie;
+    int ix;
     
     if (!buff) {
         dbg_err("Message is empty!");
@@ -280,6 +304,7 @@ static int handle_peer_msg(void * cookie) {
     case PS_EXECUTING:
     case PS_PENDING:
         if (srcmsg.type == MTYPE_REQUEST) {
+            dbg_msg("Recieved a REQUEST message");
             /* Send back the REPLY message */
             lamport_msg_set(&dstmsg, MTYPE_REPLY);
             dme_send_msg(srcmsg.pid, (uint8*)&dstmsg, LAMPORT_MSG_LEN);
@@ -292,6 +317,7 @@ static int handle_peer_msg(void * cookie) {
             request_queue_insert(req);
         } else
         if (srcmsg.type == MTYPE_RELEASE) {
+            dbg_msg("Recieved a RELEASE message");
             /* pop it from the request_queue */
             request_queue_pop();
             
@@ -302,9 +328,14 @@ static int handle_peer_msg(void * cookie) {
         } else 
         /* We're waiting for replies from all other peers */
         if (fsm_state == PS_PENDING && srcmsg.type == MTYPE_REPLY) {
+            dbg_msg("Recieved a REPLY message from %llu", srcmsg.pid);
             replies[srcmsg.pid] = TRUE;
+            for (ix = 1 ; ix <= nodes_count; ix++) {
+                dbg_msg("replies[%d] = %s" , ix, replies[ix] ? "TRUE" : "FALSE");
+            }
             /* check if this process can run now */
             if (my_turn()) {
+                dbg_msg("My turn now!!!");
                 deliver_event(DME_EV_ENTERED_CRITICAL_REG, NULL);
             }
         } else {
@@ -328,7 +359,7 @@ static int handle_peer_msg(void * cookie) {
  */
 int process_ev_want_cr(void * cookie)
 {
-    lamport_message_t msg = {};
+    lamport_message_t dstmsg = {};
     request_queue_elem_t * req = NULL;
     int err = 0;
     
@@ -346,14 +377,17 @@ int process_ev_want_cr(void * cookie)
     /* Clear the table of REPLY messages from peers */
     memset(replies, FALSE, nodes_count * sizeof(bool_t));
     
-    lamport_msg_set(&msg, MTYPE_REQUEST);
-    err = dme_broadcast_msg((uint8*)&msg, LAMPORT_MSG_LEN);
+    lamport_msg_set(&dstmsg, MTYPE_REQUEST);
+    err = dme_broadcast_msg((uint8*)&dstmsg, LAMPORT_MSG_LEN);
     
-    /* insert the request in the request_queue */
+    /* 
+     * Insert the request in the request_queue.
+     * The values are already converted to network order so we need to reconvert them.
+     */
     req = calloc(1, sizeof(request_queue_elem_t));
-    req->sec_tstamp = msg.tstamp_sec;
-    req->nsec_tstamp = msg.tstamp_nsec;
-    req->pid = msg.pid;
+    req->sec_tstamp = ntohl(dstmsg.tstamp_sec);
+    req->nsec_tstamp = ntohl(dstmsg.tstamp_nsec);
+    req->pid = ntohq(dstmsg.pid);
     request_queue_insert(req);
 
     return err;
@@ -378,6 +412,10 @@ int process_ev_entered_cr(void * cookie)
     /* Switch to the executing state and inform the supervisor */
     supervisor_send_inform_message(DME_EV_ENTERED_CRITICAL_REG);
     fsm_state = PS_EXECUTING;
+    
+    /* Finish our simulated work after the ammount of time specified by the supervisor */
+    schedule_event(DME_EV_EXITED_CRITICAL_REG,
+                   critical_region_simulated_duration, 0, NULL);
     
     /* Sanity check... You can never be to sure. */
     err = critical_region_is_sane();
