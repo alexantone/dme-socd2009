@@ -83,6 +83,7 @@ typedef enum dme_evt_e {
     DME_EV_INVALID,
 } dme_ev_t;
 
+#define SUPERVISOR_PID (0)
 
 /* Info to be included in adjacency matrix cells */
 typedef struct link_info_s {
