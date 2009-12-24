@@ -68,7 +68,7 @@ bool_t critical_region_is_sane(void) {
     int ix = 1;          /* we skipt he supervisor */
     int count = 0;       /* count how many there are inside the critical region */
     
-    while (count < 2 && ix <= nodes_count) {
+    while (count < 2 && ix++ <= nodes_count) {
         if (nodes[ix].state == PS_EXECUTING) {
             count++; 
         }

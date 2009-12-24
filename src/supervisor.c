@@ -70,6 +70,7 @@ proc_id_t get_random_pid() {
  */
 
 int do_work(void * cookie) {
+	dbg_msg("------------------------------------------------");
     int concurrent_count = random() % (max_concurrent_proc + 1);
     proc_id_t pid_arr[concurrent_count];
     proc_id_t tpid;
@@ -79,6 +80,8 @@ int do_work(void * cookie) {
     
     /* If the critical region is free, elect processes to compete for it */
     if (critical_region_is_idlle() && concurrent_count > 0) {
+    	dbg_msg("Critical region is free. Starting election process for %d processes.",
+    			concurrent_count);
         /* build the list of competing processes */
         ix = 0;
         while (ix < concurrent_count) {
@@ -98,6 +101,7 @@ int do_work(void * cookie) {
              */
             if (!found) {
                 pid_arr[ix] = tpid;
+                dbg_msg("Elected process %llu", tpid);
                 ix++;
             }
         }
