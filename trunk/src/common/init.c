@@ -67,6 +67,10 @@ static dme_ev_reg_t func_registry[] = {
 };
 static func_registry_count = get_count(func_registry);
 
+#define SIGRT_NETWORK  (SIGRTMIN)
+#define SIGRT_TIMEREXP (SIGRTMIN + 1)
+#define SIGRT_DELIVER  (SIGRTMIN + 2)
+static unsigned int tick_count = 0;
 /* 
  * Timers pool
  */
@@ -136,9 +140,10 @@ static int get_free_timer(void) {
  */
 static void deliver_event_handler(int sig, siginfo_t *siginfo, void * context)
 {
+	dbg_msg();
     int err;
-    /* This fuinction should only be registerd to SIGRTMIN */
-    if (siginfo->si_signo != SIGRTMIN) {
+    /* This fuinction should only be registerd to SIGRT_DELIVER */
+    if (siginfo->si_signo != SIGRT_DELIVER) {
         return;
     }
     
@@ -162,13 +167,13 @@ static void deliver_event_handler(int sig, siginfo_t *siginfo, void * context)
 
 
 /*
- * SIGUSR1 handler
+ * SIGRT_TIMEREXP handler
  */
 static void timer_expire_handler(int sig, siginfo_t *siginfo, void * context)
 {
     dbg_msg("");
-    /* This function should only be registerd to SIGUSR1 */
-    if (siginfo->si_signo != SIGUSR1) {
+    /* This function should only be registerd to SIGRT_TIMEREXP */
+    if (siginfo->si_signo != SIGRT_TIMEREXP) {
         return;
     }
     
@@ -182,7 +187,7 @@ static void timer_expire_handler(int sig, siginfo_t *siginfo, void * context)
     return;
 }
 
-static void sigio_handler (int sig)
+static void networkio_handler (int sig, siginfo_t *siginfo, void * context)
 {
     dbg_msg("");
     /* Just queue a DME_IEV_PACK_IN event */
@@ -280,7 +285,7 @@ deliver_event (dme_ev_t event, void * cookie)
     psc->sc_evt    = event;
     psc->sc_cookie = cookie;
     
-    res = sigqueue(getpid(), SIGRTMIN, (sigval_t)(void *)psc);
+    res = sigqueue(getpid(), SIGRT_DELIVER, (sigval_t)(void *)psc);
     
     return res;
 }
@@ -307,7 +312,7 @@ schedule_event (dme_ev_t event, uint32 secs, uint32 nsecs,void * cookie) {
         pstc->stc_cookie = cookie;
         
         timer_expire_ev.sigev_notify = SIGEV_SIGNAL;
-        timer_expire_ev.sigev_signo = SIGUSR1;
+        timer_expire_ev.sigev_signo = SIGRT_TIMEREXP;
         timer_expire_ev.sigev_value.sival_ptr = pstc;
         
         tp = &timers_pool[tidx];
@@ -320,6 +325,7 @@ schedule_event (dme_ev_t event, uint32 secs, uint32 nsecs,void * cookie) {
         res = 1;
     }
     
+    dbg_msg("Exiting");
     return res;
 }
 
@@ -328,19 +334,40 @@ schedule_event (dme_ev_t event, uint32 secs, uint32 nsecs,void * cookie) {
  * This should be used in a loop.
  */
 void wait_events(void)
-{
+{	
+	siginfo_t sinfo;
+	sigset_t waitset;
+	int signo;
+	sigemptyset(&waitset);
+
+	sigprocmask(SIG_BLOCK, &waitset, NULL);
+
+    sigaddset(&waitset, SIGRT_DELIVER);
+    sigaddset(&waitset, SIGRT_TIMEREXP);
+    sigaddset(&waitset, SIGRT_NETWORK);
+	
     while(!exit_request) {
-        pause();
-        dbg_msg("Bump! Sig(nal)happened");
-    }
+        signo = sigwaitinfo(&waitset, &sinfo);
+        dbg_msg("TICK=%4d : signal %d occured ", tick_count++, signo);
+        if (signo == SIGRT_DELIVER) {
+        	deliver_event_handler(signo, &sinfo, NULL);
+        } else if (signo == SIGRT_NETWORK) {
+        	networkio_handler(signo, &sinfo, NULL);
+        } else if (signo == SIGRT_TIMEREXP) {
+        	timer_expire_handler(signo, &sinfo, NULL);
+        } else {
+        	/* Ignore */
+        }
+    };
     dbg_msg("Exit requested >>>>>>>>>>>>>> EXIT stage right!");
 }
 
 /*
  * events module initialisation.
  */
-static sigset_t SIGRTMINblock_set;
-static sigset_t SIGUSR1block_set;
+static sigset_t SIGRT_DELIVER_block_set;
+static sigset_t SIGRT_TIMEREXP_block_set;
+static sigset_t SIGRT_NETWORK_block_set;
 
 /* 
  * Does initial signal handling.
@@ -350,46 +377,69 @@ init_handlers (int sock)
 {
     int res = 0;
     
-    /* init signal masks (block SIGRTMIN but allow SIGUSR1) */
-    sigemptyset(&SIGRTMINblock_set);
-    sigaddset(&SIGRTMINblock_set, SIGRTMIN);
+    /* init signal masks (block SIGRT_DELIVER but allow others) */
+    sigemptyset(&SIGRT_DELIVER_block_set);
+    sigaddset(&SIGRT_DELIVER_block_set, SIGRT_DELIVER);
     
-    sigemptyset(&SIGUSR1block_set);
+    /* Sequentialize timer expirations */
+    sigemptyset(&SIGRT_TIMEREXP_block_set);
+    sigaddset(&SIGRT_TIMEREXP_block_set, SIGRT_DELIVER);
+    sigaddset(&SIGRT_TIMEREXP_block_set, SIGRT_TIMEREXP);
+    sigaddset(&SIGRT_TIMEREXP_block_set, SIGRT_NETWORK);
 
-    /* Register the SIGRTMIN handler (used for event delivery) */
+
+    /* Sequentialize network I/O */
+    sigemptyset(&SIGRT_NETWORK_block_set);
+    sigaddset(&SIGRT_NETWORK_block_set, SIGRT_DELIVER);
+    sigaddset(&SIGRT_NETWORK_block_set, SIGRT_TIMEREXP);
+    sigaddset(&SIGRT_NETWORK_block_set, SIGRT_NETWORK);
+
+    sigprocmask(SIG_BLOCK, &SIGRT_DELIVER_block_set, NULL);
+    sigprocmask(SIG_BLOCK, &SIGRT_TIMEREXP_block_set, NULL);
+    sigprocmask(SIG_BLOCK, &SIGRT_NETWORK_block_set, NULL);
+
+    /* Register the SIGRT_DELIVER handler (used for event delivery) */
     struct sigaction deliver_ev_sa;
     deliver_ev_sa.sa_sigaction = deliver_event_handler;
     deliver_ev_sa.sa_flags = SA_SIGINFO;
-    //deliver_ev_sa.sa_mask = SIGRTMINblock_set;
+    deliver_ev_sa.sa_mask = SIGRT_DELIVER_block_set;
     
-    if (res = sigaction(SIGRTMIN, &deliver_ev_sa, NULL) < 0) {
-        dbg_err("Cound not register handler for SIGRTMIN!");
+    if (res = sigaction(SIGRT_DELIVER, &deliver_ev_sa, NULL) < 0) {
+        dbg_err("Cound not register handler for SIGRT_DELIVER!");
         goto out;
     }
     
     /* init timers */
-    /* Register the SIGUSR1 handler (used for timer expiration) */
+    /* Register the SIGRT_TIMEREXP handler (used for timer expiration) */
     struct sigaction timer_sa;
     timer_sa.sa_sigaction = timer_expire_handler;
     timer_sa.sa_flags = SA_SIGINFO;
-    timer_sa.sa_mask = SIGUSR1block_set;
+    timer_sa.sa_mask = SIGRT_TIMEREXP_block_set;
     
-    if (res = sigaction(SIGUSR1, &timer_sa, NULL) < 0) {
-        dbg_err("Cound not register handler for SIGUSR1!");
+    if (res = sigaction(SIGRT_TIMEREXP, &timer_sa, NULL) < 0) {
+        dbg_err("Cound not register handler for SIGRT_TIMEREXP!");
         goto out;
     }
 
     
     /* Register handler for Network IO */
     dbg_msg("The current socket is %d", sock);
-    signal(SIGRTMAX, sigio_handler);
+    struct sigaction network_sa;
+    network_sa.sa_sigaction = networkio_handler;
+    network_sa.sa_flags = SA_SIGINFO;
+    network_sa.sa_mask = SIGRT_NETWORK_block_set;
     
+    if (res = sigaction(SIGRT_NETWORK, &network_sa, NULL) < 0) {
+        dbg_err("Cound not register handler for SIGRT_NETWORK!");
+        goto out;
+    }
+
     if (res = fcntl(sock, F_SETOWN, getpid()) < 0) {
         dbg_err("Could not set ownership of socket!");
         goto out;
     }
     
-    if (res = fcntl(sock, F_SETSIG, SIGRTMAX) < 0) {
+    if (res = fcntl(sock, F_SETSIG, SIGRT_NETWORK) < 0) {
         dbg_err("Could not change signal!");
         goto out;
     }

@@ -88,14 +88,14 @@ static void request_queue_insert(request_queue_elem_t * const elmt) {
     request_queue_elem_t * cx = request_queue;  /* current element */
     request_queue_elem_t * px = request_queue;  /* previous element */
     /* if queue is empty just create the queue */
-    dbg_msg("the top of the queue is at %p and has a pid of %llu",
-            request_queue, request_queue ? request_queue->pid : 0);
+    dbg_msg("QUEUE: current top pid is %llu@0x%p",
+            request_queue ? request_queue->pid : -1, request_queue);
     if (!request_queue) {
         request_queue = elmt;
         request_queue->next = NULL;
+        dbg_msg("QUEUE: new top pid is %llu@0x%p",
+                request_queue ? request_queue->pid : -1, request_queue);
         return;
-        dbg_msg("the top of the queue is at %p and has a pid of %llu",
-                request_queue, request_queue ? request_queue->pid : 0);
     }
     
     /* search for the right spot to insert this element */
@@ -113,22 +113,22 @@ static void request_queue_insert(request_queue_elem_t * const elmt) {
         px->next = elmt;
         elmt->next = cx;
     }
-    dbg_msg("the top of the queue is at %p and has a pid of %llu",
-            request_queue, request_queue ? request_queue->pid : 0);
+    dbg_msg("QUEUE: new top pid is %llu@0x%p",
+            request_queue ? request_queue->pid : -1, request_queue);
 }
 
 static void request_queue_pop(void){
     request_queue_elem_t * px = request_queue;
     
-    dbg_msg("the top of the queue is at %p and has a pid of %llu",
-            request_queue, request_queue ? request_queue->pid : 0);
+    dbg_msg("QUEUE: current top pid is %llu@0x%p",
+            request_queue ? request_queue->pid : -1, request_queue);
 
     if (request_queue) {
         request_queue = request_queue->next;
         safe_free(px);
     }
-    dbg_msg("the top of the queue is at %p and has a pid of %llu",
-            request_queue, request_queue ? request_queue->pid : 0);
+    dbg_msg("QUEUE: new top pid is %llu@0x%p",
+            request_queue ? request_queue->pid : -1, request_queue);
 }
 
 /* 
@@ -142,17 +142,25 @@ static bool_t my_turn(void) {
         keep_going = keep_going && replies[ix];
     }
     
+    if (!keep_going) {
+    	return FALSE;
+    }
     dbg_msg("Passed first part");
     
     for (ix = proc_id + 1; ix <= nodes_count && keep_going; ix++) {
         keep_going = keep_going && replies[ix];
     }
-    
+
+    if (!keep_going) {
+    	return FALSE;
+    }
     dbg_msg("Passed second part");
     
-    /* If all preers replied and we're on top then it's our turn */
-    dbg_msg("the top of the queue is at %p and has a pid of %llu",
-            request_queue, request_queue ? request_queue->pid : 0);
+    /* If all peers replied and we're on top then it's our turn */
+    dbg_msg("QUEUE: current top pid is %llu@0x%p %s %llu",
+            request_queue ? request_queue->pid : -1, request_queue,
+            (request_queue && proc_id == request_queue->pid) ? "==" : "!=",
+            proc_id);
     return (keep_going && (request_queue && request_queue->pid == proc_id));
 }
 
@@ -183,7 +191,7 @@ static int lamport_msg_set(lamport_message_t * const msg, unsigned int msgtype) 
 }
 
 /*
- * Parse a recieved lamport message. The space must be allready allocated in 'msg'.
+ * Parse a received lamport message. The space must be already allocated in 'msg'.
  */
 static int lamport_msg_parse(buff_t buff, lamport_message_t * msg) {
     lamport_message_t * src = (lamport_message_t *)buff.data;
@@ -266,6 +274,7 @@ static int handle_supervisor_msg(void * cookie) {
         critical_region_simulated_duration = srcmsg.sec_tdelta;
 
         deliver_event(DME_EV_WANT_CRITICAL_REG, NULL);
+        break;
 
     /* The supervisor should not send a message in these states */
     case PS_PENDING:
@@ -417,9 +426,7 @@ int process_ev_entered_cr(void * cookie)
     schedule_event(DME_EV_EXITED_CRITICAL_REG,
                    critical_region_simulated_duration, 0, NULL);
     
-    /* Sanity check... You can never be to sure. */
-    err = critical_region_is_sane();
-    
+    dbg_msg("Exitting");
     return err;
 }
 
@@ -498,14 +505,14 @@ int main(int argc, char *argv[])
     register_event_handler(DME_EV_EXITED_CRITICAL_REG, process_ev_exited_cr);
 
     /*
-     * Main loop: just sit here and wait for interrups (triggered by the supervisor).
+     * Main loop: just sit here and wait for interrupts (triggered by the supervisor).
      * All work is done in interrupt handlers mapped to registered functions.
      */
     wait_events();
     
 end:
     /*
-     * Do cleanup (dealocating dynamic strucutres)
+     * Do cleanup (deallocating dynamic structures)
      */
     deinit_handlers();
 

@@ -24,9 +24,9 @@
 <tool id="cdt.managedbuild.tool.gnu.cpp.compiler.base.1965960147" name="GCC C++ Compiler" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.base"/>
 <tool id="cdt.managedbuild.tool.gnu.c.compiler.base.743706812" name="GCC C Compiler" superClass="cdt.managedbuild.tool.gnu.c.compiler.base">
 <option id="gnu.c.compiler.option.include.paths.1377667866" name="Include paths (-I)" superClass="gnu.c.compiler.option.include.paths" valueType="includePath">
-<listOptionValue builtIn="false" value="&quot;${workspace_loc:/socd/src}&quot;"/>
+<listOptionValue builtIn="false" value="&quot;${workspace_loc:/dme/src}&quot;"/>
 </option>
-<option id="gnu.c.compiler.option.preprocessor.def.symbols.723193411" name="Defined symbols (-D)" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols"/>
+<option id="gnu.c.compiler.option.preprocessor.def.symbols.723193411" name="Defined symbols (-D)" superClass="gnu.c.compiler.option.preprocessor.def.symbols"/>
 <inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1122496973" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 </tool>
 <tool id="cdt.managedbuild.tool.gnu.c.linker.base.1641791119" name="GCC C Linker" superClass="cdt.managedbuild.tool.gnu.c.linker.base">
