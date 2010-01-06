@@ -88,18 +88,18 @@ static void request_queue_insert(request_queue_elem_t * const elmt) {
     request_queue_elem_t * cx = request_queue;  /* current element */
     request_queue_elem_t * px = request_queue;  /* previous element */
     /* if queue is empty just create the queue */
-    dbg_msg("QUEUE: function entry point; current top pid is %llu@0x%p",
-            request_queue ? request_queue->pid : -1, request_queue);
+    dbg_msg("QUEUE: function entry point; current top pid is %llu@0%p",
+            (request_queue ? request_queue->pid : 0), request_queue);
     if (!request_queue) {
         request_queue = elmt;
         request_queue->next = NULL;
-        dbg_msg("QUEUE: new top pid is %llu@0x%p",
+        dbg_msg("QUEUE: new top pid is %llu@%p",
                 request_queue ? request_queue->pid : -1, request_queue);
         return;
     }
     
     /* search for the right spot to insert this element */
-    while (req_elmt_cmp(elmt, cx) > 0 && cx) {
+    while (cx && req_elmt_cmp(elmt, cx)) {
         px = cx;
         cx = cx->next;
     }
@@ -114,21 +114,21 @@ static void request_queue_insert(request_queue_elem_t * const elmt) {
         elmt->next = cx;
     }
     dbg_msg("QUEUE: new top pid is %llu@0x%p",
-            request_queue ? request_queue->pid : -1, request_queue);
+            (request_queue ? request_queue->pid : 0), request_queue);
 }
 
 static void request_queue_pop(void){
     request_queue_elem_t * px = request_queue;
     
-    dbg_msg("QUEUE: function entry point; current top pid is %llu@0x%p",
+    dbg_msg("QUEUE: function entry point; current top pid is %llu@%p",
             request_queue ? request_queue->pid : -1, request_queue);
 
     if (request_queue) {
         request_queue = request_queue->next;
         safe_free(px);
     }
-    dbg_msg("QUEUE: new top pid is %llu@0x%p",
-            request_queue ? request_queue->pid : -1, request_queue);
+    dbg_msg("QUEUE: new top pid is %llu@%p",
+            request_queue ? request_queue->pid : 0, request_queue);
 }
 
 /* 
@@ -313,7 +313,7 @@ static int handle_peer_msg(void * cookie) {
     case PS_EXECUTING:
     case PS_PENDING:
         if (srcmsg.type == MTYPE_REQUEST) {
-            dbg_msg("Recieved a REQUEST message");
+            dbg_msg("Recieved a REQUEST message from %llu", srcmsg.pid);
             /* Send back the REPLY message */
             lamport_msg_set(&dstmsg, MTYPE_REPLY);
             dme_send_msg(srcmsg.pid, (uint8*)&dstmsg, LAMPORT_MSG_LEN);
@@ -326,7 +326,7 @@ static int handle_peer_msg(void * cookie) {
             request_queue_insert(req);
         } else
         if (srcmsg.type == MTYPE_RELEASE) {
-            dbg_msg("Recieved a RELEASE message");
+            dbg_msg("Recieved a RELEASE message from %llu", srcmsg.pid);
             /* pop it from the request_queue */
             request_queue_pop();
             
