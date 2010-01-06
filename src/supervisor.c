@@ -85,7 +85,7 @@ static proc_id_t get_random_pid() {
 
 int do_work(void * cookie) {
 	dbg_msg("------------------------------------------------");
-    int concurrent_count = random() % (max_concurrent_proc + 1);
+    int concurrent_count = random() % (max_concurrent_proc - 1) + 2;
     proc_id_t pid_arr[concurrent_count];
     proc_id_t tpid;
     bool_t found;
