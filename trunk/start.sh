@@ -10,4 +10,4 @@ for (( ix = 1; ix <= NPROC; ix++ )) ; do
 done
 
 echo "Starting supervisor ..."
-xterm -geometry 140x20 -T "Supervisor" -e ./build/supervisor -f dme.conf -t 30 -r 70 &
+xterm -geometry 140x20 -T "Supervisor" -e "./build/supervisor -f dme.conf -t 30 -r 70; read -p'--exited--'" &
