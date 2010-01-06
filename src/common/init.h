@@ -15,6 +15,9 @@
 
 typedef int (ev_handler_fnct_t)(void * cookie);
 
+extern const char * evtostr(dme_ev_t event);
+extern const char * sigrttostr(unsigned int signo);
+
 extern int  init_handlers(int sock);
 extern int  deinit_handlers(void);
 extern void register_event_handler(dme_ev_t event, ev_handler_fnct_t func);
