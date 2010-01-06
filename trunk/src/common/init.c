@@ -67,10 +67,36 @@ static dme_ev_reg_t func_registry[] = {
 };
 static func_registry_count = get_count(func_registry);
 
+const char * evtostr (dme_ev_t event) {
+	switch(event) {
+	case DME_EV_PEER_MSG_IN: return "DME_EV_PEER_MSG_IN";
+	case DME_EV_SUP_MSG_IN: return  "DME_EV_SUP_MSG_IN";
+	case DME_EV_WANT_CRITICAL_REG: return "DME_EV_WANT_CRITICAL_REG";
+	case DME_EV_ENTERED_CRITICAL_REG: return "DME_EV_ENTERED_CRITICAL_REG";
+	case DME_EV_EXITED_CRITICAL_REG: return "DME_EV_EXITED_CRITICAL_REG";
+
+	case DME_SEV_PERIODIC_WORK: return "DME_SEV_PERIODIC_WORK";
+
+	case DME_IEV_PACK_IN: return "DME_IEV_PACK_IN";
+	}
+	return "DME_EV_INVALID";
+}
+
 #define SIGRT_NETWORK  (SIGRTMIN)
 #define SIGRT_TIMEREXP (SIGRTMIN + 1)
 #define SIGRT_DELIVER  (SIGRTMIN + 2)
 static unsigned int tick_count = 0;
+
+const char * sigrttostr (unsigned int signo) {
+	if (signo == SIGRT_NETWORK) {
+		return "SIGRT_NETWORK";
+	} else if (signo == SIGRT_TIMEREXP) {
+		return "SIGRT_TIMEREXP";
+	} else if (signo == SIGRT_DELIVER) {
+		return "SIGRT_DELIVER";
+	}
+	return "OTHER_SIGNAL";
+}
 /* 
  * Timers pool
  */
@@ -156,6 +182,7 @@ static void deliver_event_handler(int sig, siginfo_t *siginfo, void * context)
     safe_free(sc);
     
     /* Call the function registered to the sc->sc_evt event */
+    dbg_msg("Handling event %s (%d)", evtostr(evt), evt);
     err = (*get_registry_funcp(evt))(cookie);
     
     /* If there was a fata error terminate the program */
@@ -274,7 +301,7 @@ register_event_handler (dme_ev_t event, ev_handler_fnct_t func)
 int
 deliver_event (dme_ev_t event, void * cookie)
 {
-    dbg_msg("event = %d cookie@%p", event, cookie);
+    dbg_msg("event=%s (%d), cookie@%p", evtostr(event), event, cookie);
     /*
      * sigqueue the stuff
      */
@@ -296,7 +323,8 @@ deliver_event (dme_ev_t event, void * cookie)
  */
 int
 schedule_event (dme_ev_t event, uint32 secs, uint32 nsecs,void * cookie) {
-    dbg_msg("Schedule event=%d in %u.%u with cookie@%p", event, secs, nsecs, cookie);
+    dbg_msg("Schedule event=%s(%d) in %u.%u with cookie@0x%p",
+    		evtostr(event), event, secs, nsecs, cookie);
     int res = 0;
     sigevent_t timer_expire_ev = {};
     timer_t * tp = NULL;
@@ -348,7 +376,8 @@ void wait_events(void)
 	
     while(!exit_request) {
         signo = sigwaitinfo(&waitset, &sinfo);
-        dbg_msg("TICK=%4d : signal %d occured ", tick_count++, signo);
+        dbg_msg("TICK=%4d : signal %s(%d) occured ",
+        		tick_count++, sigrttostr(signo), signo);
         if (signo == SIGRT_DELIVER) {
         	deliver_event_handler(signo, &sinfo, NULL);
         } else if (signo == SIGRT_NETWORK) {

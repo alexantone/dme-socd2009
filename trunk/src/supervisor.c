@@ -52,10 +52,24 @@ static int trigger_critical_region (proc_id_t dest_pid,
     return dme_send_msg(dest_pid, buff, SUPERVISOR_MESSAGE_LENGTH);
 }
 
+static void randomizer_init(void) {
+	unsigned int seed;
+	FILE * fh;
+
+	if (fh = fopen("/dev/urandom","r")) {
+		fread(&seed, sizeof(unsigned int), 1, fh);
+		fclose(fh);
+	} else {
+		dbg_msg("NOTICE: Could not open /dev/urandom. The RNG will be affected.");
+	}
+	srandom(seed);
+}
+
+
 /*
  * Returns a random pid.
  */
-proc_id_t get_random_pid() {
+static proc_id_t get_random_pid() {
     int ix = 0;
     
     /* get a value in 1 .. nodes_count */
@@ -159,7 +173,6 @@ int process_messages(void * cookie)
 
 int main(int argc, char *argv[])
 {
-    FILE *fh;
     int res = 0;
     
     if (0 != (res = parse_sup_params(argc, argv, &fname,
@@ -185,6 +198,7 @@ int main(int argc, char *argv[])
     } else {
         dbg_msg("max_concurrent_proc=%d", max_concurrent_proc);
     }
+    randomizer_init();
     
     /*
      * Init connections (open listenning socket)

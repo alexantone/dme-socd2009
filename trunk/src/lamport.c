@@ -88,7 +88,7 @@ static void request_queue_insert(request_queue_elem_t * const elmt) {
     request_queue_elem_t * cx = request_queue;  /* current element */
     request_queue_elem_t * px = request_queue;  /* previous element */
     /* if queue is empty just create the queue */
-    dbg_msg("QUEUE: current top pid is %llu@0x%p",
+    dbg_msg("QUEUE: function entry point; current top pid is %llu@0x%p",
             request_queue ? request_queue->pid : -1, request_queue);
     if (!request_queue) {
         request_queue = elmt;
@@ -120,7 +120,7 @@ static void request_queue_insert(request_queue_elem_t * const elmt) {
 static void request_queue_pop(void){
     request_queue_elem_t * px = request_queue;
     
-    dbg_msg("QUEUE: current top pid is %llu@0x%p",
+    dbg_msg("QUEUE: function entry point; current top pid is %llu@0x%p",
             request_queue ? request_queue->pid : -1, request_queue);
 
     if (request_queue) {
@@ -255,7 +255,7 @@ static int supervisor_send_inform_message(dme_ev_t ev) {
 static int fsm_state = PS_IDLE;
 
 static int handle_supervisor_msg(void * cookie) {
-    dbg_msg("");
+    dbg_msg("Entry point");
     int ret = 0;
     int ix;
     const buff_t * buff = (buff_t *)cookie; 
@@ -293,7 +293,7 @@ static int handle_supervisor_msg(void * cookie) {
 
 /* This is the algortihm's implementation */
 static int handle_peer_msg(void * cookie) {
-    dbg_msg("");
+    dbg_msg("Entry point");
     lamport_message_t srcmsg = {};
     lamport_message_t dstmsg = {};
     request_queue_elem_t * req = NULL;
@@ -426,7 +426,7 @@ int process_ev_entered_cr(void * cookie)
     schedule_event(DME_EV_EXITED_CRITICAL_REG,
                    critical_region_simulated_duration, 0, NULL);
     
-    dbg_msg("Exitting");
+    dbg_msg("Exit point");
     return err;
 }
 
@@ -437,7 +437,7 @@ int process_ev_exited_cr(void * cookie)
 {
     lamport_message_t msg = {};
     int err = 0;
-    dbg_msg("");
+    dbg_msg("Entry point");
     
     if (fsm_state != PS_EXECUTING) {
         dbg_err("Fatal error: DME_EV_EXITED_CRITICAL_REG occured while not in EXECUTING state.");
