@@ -158,7 +158,7 @@ static bool_t my_turn(void) {
     
     /* If all peers replied and we're on top then it's our turn */
     dbg_msg("QUEUE: current top pid is %llu@0x%p %s %llu",
-            request_queue ? request_queue->pid : -1, request_queue,
+            request_queue ? request_queue->pid : 0, request_queue,
             (request_queue && proc_id == request_queue->pid) ? "==" : "!=",
             proc_id);
     return (keep_going && (request_queue && request_queue->pid == proc_id));
@@ -331,7 +331,7 @@ static int handle_peer_msg(void * cookie) {
             request_queue_pop();
             
             /* check if this process can run now */
-            if (my_turn()) {
+            if (fsm_state == PS_PENDING && my_turn()) {
                 deliver_event(DME_EV_ENTERED_CRITICAL_REG, NULL);
             }
         } else 
@@ -383,8 +383,8 @@ int process_ev_want_cr(void * cookie)
     /* Switch to the pending state and send informs to peers */
     fsm_state = PS_PENDING;
     
-    /* Clear the table of REPLY messages from peers */
-    memset(replies, FALSE, nodes_count * sizeof(bool_t));
+    /* Clear the table of REPLY messages from peers (1 based) */
+    memset(replies, FALSE, nodes_count * sizeof(bool_t) + 1);
     
     lamport_msg_set(&dstmsg, MTYPE_REQUEST);
     err = dme_broadcast_msg((uint8*)&dstmsg, LAMPORT_MSG_LEN);
@@ -478,8 +478,8 @@ int main(int argc, char *argv[])
     }
     dbg_msg("nodes has %d elements", nodes_count);
     
-    /* Create the reply status array */
-    replies = calloc(nodes_count, sizeof(bool_t));
+    /* Create the reply status array (1 based) */
+    replies = calloc(nodes_count + 1, sizeof(bool_t));
     
     
     /*
