@@ -375,6 +375,9 @@ void wait_events(void)
     sigaddset(&waitset, SIGRT_DELIVER);
     sigaddset(&waitset, SIGRT_TIMEREXP);
     sigaddset(&waitset, SIGRT_NETWORK);
+
+    /* Forced exit (^Z) */
+    sigaddset(&waitset, SIGTSTP);
 	
     while(!exit_request) {
         signo = sigwaitinfo(&waitset, &sinfo);
@@ -387,6 +390,9 @@ void wait_events(void)
         	networkio_handler(signo, &sinfo, NULL);
         } else if (signo == SIGRT_TIMEREXP) {
         	timer_expire_handler(signo, &sinfo, NULL);
+        } else if (signo == SIGTSTP){
+        	dbg_msg("Forced exit!");
+        	exit_request = TRUE;
         } else {
         	/* Ignore */
         }
