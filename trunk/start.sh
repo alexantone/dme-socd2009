@@ -8,6 +8,7 @@ for (( ix = 1; ix <= NPROC; ix++ )) ; do
         xtermcmd="./build/$ALGORITHM -i $ix -f dme.conf;\
                   read -p'----------Execution finished----------'"
         xterm -geometry 140x20 -T "$ix: $ALGORITHM - Process $ix" -e "$xtermcmd" &
+        sleep 0.333
 done
 
 echo "Starting supervisor ..."

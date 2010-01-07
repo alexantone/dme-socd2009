@@ -129,7 +129,7 @@ int do_work(void * cookie) {
     		memset(strbuff, 0, sizeof(strbuff));
     		px = strbuff;
     		for (ix = 0; ix < elected_proc_count; ix++) {
-    		px += snprintf(px, px - strbuff - 1, "%3ld.%09lu, ",
+    		px += snprintf(px, sizeof(strbuff) - (px - strbuff) - 1, "%3ld.%09lu, ",
     				synchro_delays[ix].tv_sec, synchro_delays[ix].tv_nsec);
     		}
     		dbg_msg("SYNCRO DELAYS:  %s", strbuff);
@@ -139,7 +139,7 @@ int do_work(void * cookie) {
     		memset(strbuff, 0, sizeof(strbuff));
     		px = strbuff;
     		for (ix = 0; ix < elected_proc_count; ix++) {
-    		px += snprintf(px, px - strbuff - 1, "%3ld.%09lu, ",
+    		px += snprintf(px, sizeof(strbuff) - (px - strbuff) - 1, "%3ld.%09lu, ",
     				response_times[ix].tv_sec, response_times[ix].tv_nsec);
     		}
     		dbg_msg("RESPONSE TIMES: %s", strbuff);
