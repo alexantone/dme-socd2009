@@ -1,5 +1,7 @@
 /*
- * /socd/src/common/net.c/net.c
+ * src/common/net.c
+ *
+ * Network related functions.
  * 
  *  Created on: Nov 14, 2009 
  *      Author: alex
