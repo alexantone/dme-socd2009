@@ -1,5 +1,7 @@
 /*
- * /socd/src/common/util.h/util.h
+ * src/common/util.h
+ *
+ * Common system routines used by all processes.
  * 
  *  Created on: Oct 23, 2009 
  *      Author: alex

@@ -1,5 +1,7 @@
 /*
- * /socd/src/common/defs.h/defs.h
+ * src/common/defs.h
+ *
+ * Base definitions file.
  * 
  *  Created on: Nov 6, 2009 
  *      Author: alex

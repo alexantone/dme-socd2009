@@ -1,5 +1,7 @@
 /*
- * /socd/src/common/init.h/init.h
+ * src/common/init.h
+ *
+ * Signal and interrupt handling. This is the home of the signaling queue system.
  * 
  *  Created on: Oct 22, 2009 
  *      Author: alex

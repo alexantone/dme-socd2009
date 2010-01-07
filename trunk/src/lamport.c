@@ -1,5 +1,7 @@
 /*
- * /socd/src/lamport.c/lamport.c
+ * src/lamport.c
+ *
+ * Lamport's algorithm.
  * 
  *  Created on: Nov 6, 2009 
  *      Author: alex
