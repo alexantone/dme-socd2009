@@ -301,3 +301,60 @@ uint64 get_msg_delay_usec(uint64 link_speed, size_t msg_length)
 {
     return (msg_length * 1000000 / link_speed);
 }
+
+/*
+ * Get delta between two timespec_t vars.
+ */
+timespec_t timespec_delta (timespec_t start, timespec_t end) {
+	timespec_t temp;
+	if ((end.tv_nsec - start.tv_nsec) < 0) {
+		temp.tv_sec  = end.tv_sec  - start.tv_sec - 1;
+		temp.tv_nsec = end.tv_nsec - start.tv_nsec + 1000000000;
+	} else {
+		temp.tv_sec  = end.tv_sec  - start.tv_sec;
+		temp.tv_nsec = end.tv_nsec - start.tv_nsec;
+	}
+	return temp;
+}
+
+/*
+ * Computes average of some tspec deltas.
+ * Be careful this works only for deltas because it overflows.
+ * Don't feed it current time!
+ */
+
+timespec_t timespec_avg (timespec_t * tsarray, size_t len) {
+	timespec_t avgts;
+	int64 summ_sec = 0;
+	int64 summ_nsec = 0;
+	int64 avg_sec = 0;
+	int64 avg_nsec = 0;
+	size_t ix;
+
+	avgts.tv_sec = avgts.tv_nsec = 0;
+
+	if (!tsarray) {
+		return avgts;
+	}
+
+	for (ix = 0 ; ix < len; ix++) {
+		/* This will overflow if the tv_sec are too large */
+		summ_sec += tsarray[ix].tv_sec;
+		summ_nsec += tsarray[ix].tv_nsec;
+	}
+
+	avg_nsec = (summ_nsec + (summ_sec % len) * 1000000000) / len;
+	avg_sec = summ_sec / len;
+
+	if (avg_nsec > 1000000000) {
+		avg_sec += avg_nsec / 1000000000;
+		avg_nsec = avg_nsec % 1000000000;
+	}
+
+	avgts.tv_sec = avg_sec;
+	avgts.tv_nsec = avg_nsec;
+
+	return avgts;
+}
+
+
