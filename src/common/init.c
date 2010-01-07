@@ -319,6 +319,24 @@ deliver_event (dme_ev_t event, void * cookie)
     return res;
 }
 
+/*
+ * Handles immediately an event
+ */
+int
+handle_event(dme_ev_t event, void * cookie) {
+	dbg_msg();
+    int err;
+
+    /* Call the function registered to the sc->sc_evt event */
+    dbg_msg("Handling event %s (%d)", evtostr(event), event);
+    err = (*get_registry_funcp(event))(cookie);
+
+    /* If there was a fata error terminate the program */
+    if (err >= ERR_FATAL) {
+        err_code = err;
+        exit_request = TRUE;
+    }
+}
 
 /*
  * Deliver an event after tdelta.

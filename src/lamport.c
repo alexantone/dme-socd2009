@@ -273,7 +273,7 @@ static int handle_supervisor_msg(void * cookie) {
         sup_msg_parse(*buff, &srcmsg);
         critical_region_simulated_duration = srcmsg.sec_tdelta;
 
-        deliver_event(DME_EV_WANT_CRITICAL_REG, NULL);
+        ret = handle_event(DME_EV_WANT_CRITICAL_REG, NULL);
         break;
 
     /* The supervisor should not send a message in these states */
@@ -332,7 +332,7 @@ static int handle_peer_msg(void * cookie) {
             
             /* check if this process can run now */
             if (fsm_state == PS_PENDING && my_turn()) {
-                deliver_event(DME_EV_ENTERED_CRITICAL_REG, NULL);
+                ret = handle_event(DME_EV_ENTERED_CRITICAL_REG, NULL);
             }
         } else 
         /* We're waiting for replies from all other peers */
@@ -345,7 +345,7 @@ static int handle_peer_msg(void * cookie) {
             /* check if this process can run now */
             if (my_turn()) {
                 dbg_msg("My turn now!!!");
-                deliver_event(DME_EV_ENTERED_CRITICAL_REG, NULL);
+                ret = handle_event(DME_EV_ENTERED_CRITICAL_REG, NULL);
             }
         } else {
             dbg_err("Protocol error: recieved a lamport type %d message while in state %d",
