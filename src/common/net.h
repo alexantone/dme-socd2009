@@ -28,7 +28,8 @@ extern int dme_broadcast_msg(uint8 * buff, size_t len);
 /* Message types for each algorithm */
 typedef enum msg_types_e {
     MSGT_LAMPORT,
-    MSGT_SUZUKI
+    MSGT_SUZUKI,
+    MSGT_SINGHAL,
 } msg_type_t;
 
 /* 
