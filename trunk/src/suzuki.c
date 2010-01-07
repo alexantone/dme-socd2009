@@ -175,19 +175,17 @@ static int suzuki_msg_parse(buff_t buff, suzuki_message_t * msg) {
 static int supervisor_send_inform_message(dme_ev_t ev) {
     sup_message_t msg = {};
     int err = 0;
-    struct timespec tnow;
-    uint32 elapsed_sec;
-    uint32 elapsed_nsec;
+    timespec_t tnow;
+    timespec_t tdelta;
 
     switch (ev) {
     case DME_EV_ENTERED_CRITICAL_REG:
     case DME_EV_EXITED_CRITICAL_REG:
         clock_gettime(CLOCK_REALTIME, &tnow);
-        elapsed_sec = (uint32)(tnow.tv_sec - sup_tstamp.tv_sec);
-        elapsed_nsec = (uint32)(tnow.tv_nsec - sup_tstamp.tv_nsec);
+        tdelta = timespec_delta(sup_tstamp, tnow);
 
         /* construct and send the message */
-        sup_msg_set(&msg, ev, elapsed_sec, elapsed_nsec, 0);
+        sup_msg_set(&msg, ev, tdelta.tv_sec, tdelta.tv_nsec, 0);
         err = dme_send_msg(SUPERVISOR_PID, (uint8*)&msg, SUPERVISOR_MESSAGE_LENGTH);
 
         /* set new sup_tstamp to tnow */

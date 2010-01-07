@@ -36,7 +36,15 @@ static char * fname = NULL;
 static unsigned int election_interval = 10;     /* time in seconds to rerun election */
 static unsigned int concurency_ratio = 50;      /* value in percent of total processes */
 static unsigned int max_concurrent_proc = 0;    /* This will be computed in main() */
+static unsigned int test_number = 0;			/* The current concurency test */
 
+static timespec_t tstamp_last_exited;
+static timespec_t tstamp_supervisor_start;
+
+static timespec_t * synchro_delays;
+static timespec_t * response_times;
+static unsigned int elected_proc_count;
+static unsigned int received_resps_count;
 /* 
  * trigger_critical_region()
  * 
@@ -93,9 +101,65 @@ int do_work(void * cookie) {
     bool_t found;
     int ix;
     int jx;
+    char strbuff[256];
+    char * px = strbuff;
+    timespec_t avg_resp_time;
+    timespec_t avg_synchro_time;
     
     /* If the critical region is free, elect processes to compete for it */
     if (critical_region_is_idlle() && concurrent_count > 0) {
+    	/* First collect statistics from last test run */
+    	if (elected_proc_count > 0 && received_resps_count > 0) {
+    		dbg_msg("Collecting statistics for test run %d", test_number);
+    		if (received_resps_count < elected_proc_count) {
+    			dbg_msg("Not all processes finished processing their CS!!! (%u/%u)",
+    					received_resps_count, elected_proc_count);
+    		}
+
+
+    		avg_synchro_time = timespec_avg(synchro_delays, received_resps_count);
+    		avg_resp_time = timespec_avg(response_times, received_resps_count);
+
+    		dbg_msg("Test %2d: procs=%d avg_resp_time=%ld.%09lu avg_synchro_time=%ld.%09lu",
+    				test_number, elected_proc_count,
+    				avg_synchro_time.tv_sec, avg_synchro_time.tv_nsec,
+    				avg_resp_time.tv_sec, avg_resp_time.tv_nsec);
+
+    		/* List the synchro delays */
+    		memset(strbuff, 0, sizeof(strbuff));
+    		px = strbuff;
+    		for (ix = 0; ix < elected_proc_count; ix++) {
+    		px += snprintf(px, px - strbuff - 1, "%3ld.%09lu, ",
+    				synchro_delays[ix].tv_sec, synchro_delays[ix].tv_nsec);
+    		}
+    		dbg_msg("SYNCRO DELAYS:  %s", strbuff);
+
+
+    		/* List the response times */
+    		memset(strbuff, 0, sizeof(strbuff));
+    		px = strbuff;
+    		for (ix = 0; ix < elected_proc_count; ix++) {
+    		px += snprintf(px, px - strbuff - 1, "%3ld.%09lu, ",
+    				response_times[ix].tv_sec, response_times[ix].tv_nsec);
+    		}
+    		dbg_msg("RESPONSE TIMES: %s", strbuff);
+
+    	} else {
+    		dbg_msg("Ignoring test run %d (%u of %u responses)",
+    				test_number, received_resps_count, elected_proc_count);
+    	}
+
+    	/* prepare the test */
+
+    	elected_proc_count = concurrent_count;
+    	received_resps_count = 0;
+    	memset(synchro_delays, 0, nodes_count * sizeof(synchro_delays[0]));
+    	memset(response_times, 0, nodes_count * sizeof(response_times[0]));
+
+        clock_gettime(CLOCK_REALTIME, &tstamp_last_exited);
+    	test_number++;
+
+    	/* Start the test */
     	dbg_msg("Critical region is free. Starting election process for %d processes.",
     			concurrent_count);
         /* build the list of competing processes */
@@ -136,22 +200,36 @@ int do_work(void * cookie) {
     schedule_event(DME_SEV_PERIODIC_WORK, election_interval, 0, NULL);
 }
 
-/* Process incomming messages */
+/* Process incoming messages */
 int process_messages(void * cookie)
 {
     dbg_msg("");
     sup_message_t srcmsg = {};
     int err = 0;
+    struct timespec tnow;
+    struct timespec tdelta;
+    struct timespec tprogdelta;
     
     if (err = sup_msg_parse(*(buff_t *)cookie, &srcmsg)) {
         return err;
     }
     
+    clock_gettime(CLOCK_REALTIME, &tnow);
+    tprogdelta = timespec_delta(tstamp_supervisor_start, tnow);
+
     switch(srcmsg.msg_type) {
     case DME_EV_ENTERED_CRITICAL_REG:
         nodes[srcmsg.process_id].state = PS_EXECUTING;
-        dbg_msg("ENTERED CS: process %llu waited for %u.%09u seconds to enter the CS",
-                srcmsg.process_id, srcmsg.sec_tdelta, srcmsg.nsec_tdelta);
+        dbg_msg("[%ld.%09lu] ENTERED CS: process %llu waited for %u.%09u seconds to enter the CS",
+        		tprogdelta.tv_sec, tprogdelta.tv_nsec,
+        		srcmsg.process_id, srcmsg.sec_tdelta, srcmsg.nsec_tdelta);
+
+        /* Get synchronization delay */
+        tdelta = timespec_delta(tstamp_last_exited, tnow);
+        dbg_msg("SYNCHRONIZATION DELAY is %ld.%09lu", tdelta.tv_sec, tdelta.tv_nsec);
+        synchro_delays[received_resps_count].tv_sec = tdelta.tv_sec;
+        synchro_delays[received_resps_count].tv_nsec = tdelta.tv_nsec;
+
         if (!critical_region_is_sane()) {
             dbg_err("Unfortunately there are multiple processes in the CS at the same time!");
             err = ERR_FATAL;
@@ -160,8 +238,19 @@ int process_messages(void * cookie)
         
     case DME_EV_EXITED_CRITICAL_REG:
         nodes[srcmsg.process_id].state = PS_IDLE;
-        dbg_msg("EXITED CS: process %llu stayed for %u.%09u seconds in it's CS",
+
+        /* mark the time */
+        tstamp_last_exited.tv_sec = tnow.tv_sec;
+        tstamp_last_exited.tv_nsec = tnow.tv_nsec;
+
+        dbg_msg("[%ld.%09lu] EXITED CS: process %llu stayed for %u.%09u seconds in it's CS",
+        		tprogdelta.tv_sec, tprogdelta.tv_nsec,
                 srcmsg.process_id, srcmsg.sec_tdelta, srcmsg.nsec_tdelta);
+
+        /* Get the response time */
+        response_times[received_resps_count].tv_sec = srcmsg.sec_tdelta;
+        response_times[received_resps_count].tv_nsec = srcmsg.nsec_tdelta;
+        received_resps_count++;
         break;
     default:
         /* Other types are invalid */
@@ -200,6 +289,10 @@ int main(int argc, char *argv[])
     }
     randomizer_init();
     
+    /* Allocate the statistics collection storage */
+    synchro_delays = calloc(nodes_count, sizeof(timespec_t));
+    response_times = calloc(nodes_count, sizeof(timespec_t));
+
     /*
      * Init connections (open listenning socket)
      */
@@ -222,6 +315,9 @@ int main(int argc, char *argv[])
     /* wait for peers processes to init, then kick start the supervisor */
     sleep(5);
     
+    /* Start working; mark time */
+    clock_gettime(CLOCK_REALTIME, &tstamp_supervisor_start);
+
     deliver_event(DME_SEV_PERIODIC_WORK, NULL);
 
     /*
@@ -242,6 +338,8 @@ end:
     }
     
     safe_free(nodes);
+    safe_free(synchro_delays);
+    safe_free(response_times);
     
     return res;
 }
