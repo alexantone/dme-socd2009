@@ -228,7 +228,7 @@ static int handle_supervisor_msg(void * cookie) {
         sup_msg_parse(*buff, &srcmsg);
         critical_region_simulated_duration = srcmsg.sec_tdelta;
 
-        deliver_event(DME_EV_WANT_CRITICAL_REG, NULL);
+        ret = handle_event(DME_EV_WANT_CRITICAL_REG, NULL);
         break;
 
     /* The supervisor should not send a message in these states */
@@ -315,7 +315,7 @@ static int handle_peer_msg(void * cookie) {
             i_have_token = TRUE;
             my_token = srcmsg.token;
             //start executing
-            deliver_event(DME_EV_ENTERED_CRITICAL_REG, NULL);
+            ret = handle_event(DME_EV_ENTERED_CRITICAL_REG, NULL);
         }
         break;
 

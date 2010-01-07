@@ -25,6 +25,7 @@ extern int  deinit_handlers(void);
 extern void register_event_handler(dme_ev_t event, ev_handler_fnct_t func);
 
 extern int  deliver_event(dme_ev_t event, void * cookie);
+extern int  handle_event(dme_ev_t event, void * cookie);
 extern int  schedule_event (dme_ev_t event, uint32 secs, uint32 nsecs,void * cookie);
 
 void wait_events(void);

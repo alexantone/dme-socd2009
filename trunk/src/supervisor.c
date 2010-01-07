@@ -257,7 +257,7 @@ int process_messages(void * cookie)
         break;
     }
     
-    return 0;
+    return err;
 }
 
 int main(int argc, char *argv[])
