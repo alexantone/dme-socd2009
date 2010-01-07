@@ -1,5 +1,7 @@
 /*
- * /socd/src/common/init.c/init.c
+ * src/common/init.c
+ *
+ * Signal and interrupt handling. This is the home of the signaling queue system.
  * 
  *  Created on: Oct 30, 2009 
  *      Author: alex
@@ -164,11 +166,11 @@ static int get_free_timer(void) {
 /*
  * Event delivery handler. This function dispaches the functions in func_registry.
  */
-static void deliver_event_handler(int sig, siginfo_t *siginfo, void * context)
+static void queued_event_handler(int sig, siginfo_t *siginfo, void * context)
 {
 	dbg_msg();
     int err;
-    /* This fuinction should only be registerd to SIGRT_DELIVER */
+    /* This function should only be registered to SIGRT_DELIVER */
     if (siginfo->si_signo != SIGRT_DELIVER) {
         return;
     }
@@ -256,7 +258,7 @@ static int net_demux(void * cookie)
     /* Free the allocated buffer data (if any) */ 
     safe_free(buff.data);
     
-    /* If there was a fata error terminate the program */
+    /* If there was a fatal error terminate the program */
     if (err >= ERR_FATAL) {
         err_code = err;
         exit_request = TRUE;
@@ -301,7 +303,7 @@ register_event_handler (dme_ev_t event, ev_handler_fnct_t func)
 int
 deliver_event (dme_ev_t event, void * cookie)
 {
-    dbg_msg("event=%s (%d), cookie@%p", evtostr(event), event, cookie);
+    dbg_msg("++ Queuing event %s (%d), cookie@%p", evtostr(event), event, cookie);
     /*
      * sigqueue the stuff
      */
@@ -353,7 +355,7 @@ schedule_event (dme_ev_t event, uint32 secs, uint32 nsecs,void * cookie) {
         res = 1;
     }
     
-    dbg_msg("Exiting");
+    dbg_msg("INFO: %s", res ? "Error scheduling event" : "Event scheduled");
     return res;
 }
 
@@ -376,10 +378,11 @@ void wait_events(void)
 	
     while(!exit_request) {
         signo = sigwaitinfo(&waitset, &sinfo);
-        dbg_msg("TICK=%4d : signal %s(%d) occured ",
+        dbg_msg("-----------------------------------------------------------");
+        dbg_msg("TICK = %-4d : signal %s (%d) occured ",
         		tick_count++, sigrttostr(signo), signo);
         if (signo == SIGRT_DELIVER) {
-        	deliver_event_handler(signo, &sinfo, NULL);
+        	queued_event_handler(signo, &sinfo, NULL);
         } else if (signo == SIGRT_NETWORK) {
         	networkio_handler(signo, &sinfo, NULL);
         } else if (signo == SIGRT_TIMEREXP) {
@@ -392,7 +395,7 @@ void wait_events(void)
 }
 
 /*
- * events module initialisation.
+ * events module initialization.
  */
 static sigset_t SIGRT_DELIVER_block_set;
 static sigset_t SIGRT_TIMEREXP_block_set;
@@ -429,7 +432,7 @@ init_handlers (int sock)
 
     /* Register the SIGRT_DELIVER handler (used for event delivery) */
     struct sigaction deliver_ev_sa;
-    deliver_ev_sa.sa_sigaction = deliver_event_handler;
+    deliver_ev_sa.sa_sigaction = queued_event_handler;
     deliver_ev_sa.sa_flags = SA_SIGINFO;
     deliver_ev_sa.sa_mask = SIGRT_DELIVER_block_set;
     

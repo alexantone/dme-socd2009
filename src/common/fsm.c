@@ -1,5 +1,7 @@
 /*
- * /socd/src/common/fsm.c/fsm.c
+ * src/common/fsm.c
+ *
+ * Critical region checks used by all programs.
  * 
  *  Created on: Dec 13, 2009 
  *      Author: alex

@@ -1,5 +1,7 @@
 /*
- * /socd/src/common/net.h/net.h
+ * src/common/net.h
+ *
+ * Network related functions.
  * 
  *  Created on: Nov 14, 2009 
  *      Author: alex
@@ -26,6 +28,7 @@ extern int dme_broadcast_msg(uint8 * buff, size_t len);
 /* Message types for each algorithm */
 typedef enum msg_types_e {
     MSGT_LAMPORT,
+    MSGT_SUZUKI
 } msg_type_t;
 
 /* 

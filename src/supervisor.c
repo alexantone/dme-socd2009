@@ -1,5 +1,7 @@
 /*
- * /socd/src/supervisor.c/supervisor.c
+ * supervisor.c
+ *
+ * This is the simulated environment agent.
  * 
  *  Created on: Dec 3, 2009 
  *      Author: alex
@@ -40,7 +42,7 @@ static unsigned int max_concurrent_proc = 0;    /* This will be computed in main
  * 
  * Trigger request of the critical region for a certain process.
  * Once entered the critical region, that process will stay there
- * for the specified ammount of time as sec and nanosec.
+ * for the specified amount of time as sec and nanosec.
  */
 static int trigger_critical_region (proc_id_t dest_pid,
                                     uint32 sec_delta, uint32 nsec_delta) {
@@ -67,12 +69,12 @@ static void randomizer_init(void) {
 
 
 /*
- * Returns a random pid.
+ * Returns a random pid in [1..nodes_count]
  */
 static proc_id_t get_random_pid() {
     int ix = 0;
     
-    /* get a value in 1 .. nodes_count */
+    /* get a value in [1 .. nodes_count] */
     ix = 1 + random() % nodes_count;
     return nodes[ix].proc_id;
     
@@ -80,11 +82,11 @@ static proc_id_t get_random_pid() {
 
 /* 
  * Event handler functions.
- * These functions must properly free the cookie revieved.
+ * These functions must properly free the cookie received.
  */
 
 int do_work(void * cookie) {
-	dbg_msg("------------------------------------------------");
+	dbg_msg("=================================================================");
     int concurrent_count = random() % (max_concurrent_proc - 1) + 2;
     proc_id_t pid_arr[concurrent_count];
     proc_id_t tpid;
@@ -122,13 +124,11 @@ int do_work(void * cookie) {
         
         /* Trigger the elected processes to compete for the critical region */
         for (ix = 0; ix < concurrent_count; ix++) {
-            dbg_msg("elected pid[%d] = %llu ", ix, pid_arr[ix]);
-        }
-
-        for (ix = 0; ix < concurrent_count; ix++) {
             trigger_critical_region(pid_arr[ix],5,0);
             nodes[pid_arr[ix]].state = PS_PENDING;
         }
+    } else {
+    	dbg_msg("Critical region is not free yet. Rescheduling.");
     }
     
     
