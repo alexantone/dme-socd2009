@@ -7,7 +7,7 @@ for (( ix = 1; ix <= NPROC; ix++ )) ; do
         echo "Starting process $ix ..."
         xtermcmd="./build/$ALGORITHM -i $ix -f dme.conf;\
                   read -p'----------Execution finished----------'"
-        xterm -geometry 140x20 -T "$ALGORITHM - Process $ix" -e "$xtermcmd" &
+        xterm -geometry 140x20 -T "$ix: $ALGORITHM - Process $ix" -e "$xtermcmd" &
 done
 
 echo "Starting supervisor ..."
