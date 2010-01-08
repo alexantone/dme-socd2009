@@ -32,6 +32,9 @@ int err_code = 0;
 bool_t exit_request = FALSE;
 
 static char * fname = NULL;
+static char * logfname = "supervisor.log";
+static FILE * log_fh;
+
 
 static unsigned int election_interval = 10;     /* time in seconds to rerun election */
 static unsigned int concurency_ratio = 50;      /* value in percent of total processes */
@@ -75,6 +78,8 @@ static void randomizer_init(void) {
 	srandom(seed);
 }
 
+#define log_msg(format, args...) \
+        fprintf(log_fh, format "\n", ##args)
 
 /*
  * Returns a random pid in [1..nodes_count]
@@ -124,6 +129,10 @@ int do_work(void * cookie) {
     				test_number, elected_proc_count,
     				avg_synchro_time.tv_sec, avg_synchro_time.tv_nsec,
     				avg_resp_time.tv_sec, avg_resp_time.tv_nsec);
+    		log_msg("Test %2d: procs=%d avg_resp_time=%ld.%09lu avg_synchro_time=%ld.%09lu",
+    				test_number, elected_proc_count,
+    				avg_synchro_time.tv_sec, avg_synchro_time.tv_nsec,
+    				avg_resp_time.tv_sec, avg_resp_time.tv_nsec);
 
     		/* List the synchro delays */
     		memset(strbuff, 0, sizeof(strbuff));
@@ -133,6 +142,7 @@ int do_work(void * cookie) {
     				synchro_delays[ix].tv_sec, synchro_delays[ix].tv_nsec);
     		}
     		dbg_msg("SYNCRO DELAYS:  %s", strbuff);
+    		log_msg("SYNCRO DELAYS:  %s", strbuff);
 
 
     		/* List the response times */
@@ -143,9 +153,12 @@ int do_work(void * cookie) {
     				response_times[ix].tv_sec, response_times[ix].tv_nsec);
     		}
     		dbg_msg("RESPONSE TIMES: %s", strbuff);
+    		log_msg("RESPONSE TIMES: %s", strbuff);
 
     	} else {
     		dbg_msg("Ignoring test run %d (%u of %u responses)",
+    				test_number, received_resps_count, elected_proc_count);
+    		log_msg("Ignoring test run %d (%u of %u responses)",
     				test_number, received_resps_count, elected_proc_count);
     	}
 
@@ -251,6 +264,7 @@ int process_messages(void * cookie)
         response_times[received_resps_count].tv_sec = srcmsg.sec_tdelta;
         response_times[received_resps_count].tv_nsec = srcmsg.nsec_tdelta;
         received_resps_count++;
+        dbg_msg("received_resps_count = %u", received_resps_count);
         break;
     default:
         /* Other types are invalid */
@@ -264,7 +278,7 @@ int main(int argc, char *argv[])
 {
     int res = 0;
     
-    if (0 != (res = parse_sup_params(argc, argv, &fname,
+    if (0 != (res = parse_sup_params(argc, argv, &fname, &logfname,
                                      &concurency_ratio, &election_interval))) {
         dbg_err("parse_args() returned nonzero status:%d", res);
         goto end;
@@ -289,9 +303,16 @@ int main(int argc, char *argv[])
     }
     randomizer_init();
     
-    /* Allocate the statistics collection storage */
+    /* Allocate the statistics collection storage and open the log file */
     synchro_delays = calloc(nodes_count, sizeof(timespec_t));
     response_times = calloc(nodes_count, sizeof(timespec_t));
+
+    if (NULL == (log_fh = fopen(logfname, "w"))) {
+        dbg_err("Could not open log file %s for writing", logfname);
+        res = ERR_BADFILE;
+        goto end;
+    }
+
 
     /*
      * Init connections (open listenning socket)
@@ -336,7 +357,11 @@ end:
     if (nodes && nodes[proc_id].sock_fd > 0) {
         close(nodes[proc_id].sock_fd);
     }
-    
+
+    if (log_fh) {
+        fclose(log_fh);
+    }
+
     safe_free(nodes);
     safe_free(synchro_delays);
     safe_free(response_times);

@@ -70,12 +70,14 @@ int parse_peer_params(int argc, char ** argv,
 
 #define SUPERVISOR_USAGE_MESSAGE \
 "Usage:\n"\
-"       supervisor -f <config-file> [-r <concurency ratio>] [-t <sec interval>]\n"
+"       supervisor -f <config-file> [-r <concurency ratio>] [-t <sec interval>]\n"\
+"                  -o <out-logfile>"
 
 
-#define SUPERVISOR_OPT_STRING "f:t:r:"
+#define SUPERVISOR_OPT_STRING "f:t:r:o:"
 extern int parse_sup_params(int argc, char * argv[],
                             char ** out_fname,
+                            char ** out_logfname,
                             uint32 *out_concurency_ratio,
                             uint32 *out_election_interval)
 {
@@ -93,6 +95,10 @@ extern int parse_sup_params(int argc, char * argv[],
         case 'f':
             *out_fname = optarg;
             file_provided = TRUE;
+            break;
+
+        case 'o':
+            *out_logfname = optarg;
             break;
 
         case 'r':
@@ -129,6 +135,11 @@ extern int parse_sup_params(int argc, char * argv[],
             exit(ERR_BADARGS);
     }
     
+    if (strcmp(*out_logfname, *out_fname) == 0) {
+        dbg_msg("The output log file can not be the same as the input file!");
+        exit(ERR_BADARGS);
+    }
+
     return 0;
 }
 
