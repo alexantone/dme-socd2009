@@ -161,6 +161,7 @@ int do_work(void * cookie) {
     		log_msg("Ignoring test run %d (%u of %u responses)",
     				test_number, received_resps_count, elected_proc_count);
     	}
+    	fflush(log_fh);
 
     	/* prepare the test */
 

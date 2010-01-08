@@ -71,7 +71,7 @@ int parse_peer_params(int argc, char ** argv,
 #define SUPERVISOR_USAGE_MESSAGE \
 "Usage:\n"\
 "       supervisor -f <config-file> [-r <concurency ratio>] [-t <sec interval>]\n"\
-"                  -o <out-logfile>"
+"                  -o <out-logfile>\n"
 
 
 #define SUPERVISOR_OPT_STRING "f:t:r:o:"
@@ -136,7 +136,7 @@ extern int parse_sup_params(int argc, char * argv[],
     }
     
     if (strcmp(*out_logfname, *out_fname) == 0) {
-        dbg_msg("The output log file can not be the same as the input file!");
+        dbg_err("The output log file can not be the same as the input file!");
         exit(ERR_BADARGS);
     }
 
