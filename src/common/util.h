@@ -30,6 +30,7 @@ extern int parse_peer_params(int argc, char * argv[],
 
 extern int parse_sup_params(int argc, char * argv[],
                             char ** out_fname,
+                            char ** out_logfname,
                             uint32 *out_concurency_ratio,
                             uint32 *out_election_interval);
 
