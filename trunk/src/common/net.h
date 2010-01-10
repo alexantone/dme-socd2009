@@ -30,6 +30,7 @@ typedef enum msg_types_e {
     MSGT_LAMPORT,
     MSGT_SUZUKI,
     MSGT_SINGHAL,
+    MSGT_RICART,
 } msg_type_t;
 
 /* 
