@@ -255,10 +255,6 @@ static int handle_peer_msg(void * cookie) {
     case PS_PENDING:
         if (srcmsg.type == MTYPE_REQUEST) {
             dbg_msg("Recieved a REQUEST message from %llu", srcmsg.pid);
-            
-            for (ix = 1; ix<=nodes_count;ix++){
-                printf("RD[%d] = %d\n", ix , ricart_RD[ix]);
-            }
 
             dbg_msg("my timestamp  = %lu sec %lu nsec", my_tstamp_sec , my_tstamp_nsec);
             dbg_msg("src timestamp = %lu sec %lu nsec", srcmsg.tstamp_sec, srcmsg.tstamp_nsec);
@@ -294,10 +290,6 @@ static int handle_peer_msg(void * cookie) {
         dbg_err("Fatal error: FSM state corrupted");
         ret = ERR_FATAL;
         break;
-    }
-    
-    for (ix = 1; ix<=nodes_count;ix++){
-        printf("RD[%d] = %d\n", ix , ricart_RD[ix]);
     }
 
     return ret;
@@ -396,7 +388,7 @@ int main(int argc, char *argv[])
 {
     FILE *fh;
     int res = 0;
-
+    int ix = 0;
     if (0 != (res = parse_peer_params(argc, argv, &proc_id, &fname))) {
         dbg_err("parse_args() returned nonzero status:%d", res);
         goto end;
@@ -413,12 +405,8 @@ int main(int argc, char *argv[])
 
     /* Create the reply status array (1 based) */
     ricart_replies = calloc(nodes_count + 1, sizeof(bool_t));
-    ricart_RD = calloc(nodes_count + 1, sizeof(bool_t));
-    
-    memset(ricart_replies, FALSE , sizeof(ricart_RD));
-    for (ix = 1; ix<=nodes_count;ix++){
-        printf("RD[%d] = %d\n", ix , ricart_RD[ix]);
-    }
+    ricart_RD = calloc(nodes_count + 1, sizeof(int));
+
     /*
      * Init connections (open listenning socket)
      */
