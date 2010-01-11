@@ -541,7 +541,6 @@ int process_ev_exited_cr(void * cookie)
 
 int main(int argc, char *argv[])
 {
-    FILE *fh;
     int res = 0;
     int ix;
 
