@@ -70,15 +70,18 @@ int parse_peer_params(int argc, char ** argv,
 
 #define SUPERVISOR_USAGE_MESSAGE \
 "Usage:\n"\
-"       supervisor -f <config-file> [-r <concurency ratio>] [-t <sec interval>]\n"\
-"                  -o <out-logfile>\n"
+"       supervisor -f <config-file> [-r <concurency ratio>] [-c <cproc_count>]\n"\
+"                  [-t <sec interval>]\n"\
+"                  [-o <out-logfile>]\n"\
+" Note: concurent proc count takes precedence over the the concurenct ratio."
 
 
-#define SUPERVISOR_OPT_STRING "f:t:r:o:"
+#define SUPERVISOR_OPT_STRING "f:t:r:c:o:"
 extern int parse_sup_params(int argc, char * argv[],
                             char ** out_fname,
                             char ** out_logfname,
                             uint32 *out_concurency_ratio,
+                            uint32 *out_concurent_count,
                             uint32 *out_election_interval)
 {
     char optchar = '\0';
@@ -104,10 +107,20 @@ extern int parse_sup_params(int argc, char * argv[],
         case 'r':
             testval = strtoul(optarg, NULL, BASE_10);
             if (testval < 0 || testval > 100) {
-                fprintf(stderr, "Concurency ratio must be in percent: (0..100).\n");
+                fprintf(stderr, "Concurrency ratio must be in percent: (0..100).\n");
                 err = TRUE;
             } else {
                 *out_concurency_ratio = testval;
+            }
+            break;
+
+        case 'c':
+            testval = strtoul(optarg, NULL, BASE_10);
+            if (testval < 2) {
+                fprintf(stderr, "Concurrent process count must be at least 2.\n");
+                err = TRUE;
+            } else {
+                *out_concurent_count = testval;
             }
             break;
 
