@@ -2,7 +2,7 @@
 NPROC=`head -n1 dme.conf | cut -d ' ' -f 1`
 
 ALGORITHM=lamport
-SUPERVISOR_ARGS="-f dme.conf -t 30 -r 70 -o supervisor.log"
+SUPDEF_ARGS="-f dme.conf -t 30 -r 70 -o supervisor.log"
 
 USAGEMSG="Usage:\n"\
 "       start.sh   [algorithm]\n"\
@@ -33,4 +33,4 @@ for (( ix = 1; ix <= NPROC; ix++ )) ; do
 done
 
 echo "Starting supervisor ..."
-xterm -geometry 140x20 -T "Supervisor" -e "./build/supervisor $SUPERVISOR_ARGS ; read -p'--exited--'" &
+xterm -geometry 140x20 -T "Supervisor" -e "./build/supervisor $SUPDEF_ARGS $SUPERVISOR_ARGS ; read -p'--exited--'" &

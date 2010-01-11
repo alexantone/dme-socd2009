@@ -39,6 +39,7 @@ static FILE * log_fh;
 static unsigned int election_interval = 10;     /* time in seconds to rerun election */
 static unsigned int concurency_ratio = 50;      /* value in percent of total processes */
 static unsigned int max_concurrent_proc = 0;    /* This will be computed in main() */
+static bool_t fixed_concurent_num = FALSE;
 static unsigned int test_number = 0;			/* The current concurency test */
 
 static timespec_t tstamp_last_exited;
@@ -100,7 +101,8 @@ static proc_id_t get_random_pid() {
 
 int do_work(void * cookie) {
 	dbg_msg("=================================================================");
-    int concurrent_count = random() % (max_concurrent_proc - 1) + 2;
+    int concurrent_count = fixed_concurent_num ?
+            max_concurrent_proc : random() % (max_concurrent_proc - 1) + 2;
     proc_id_t pid_arr[concurrent_count];
     proc_id_t tpid;
     bool_t found;
@@ -271,8 +273,8 @@ int process_messages(void * cookie)
         dbg_msg("[%ld.%09lu] EXITED CS: process %llu stayed for %u.%09u seconds in it's CS",
         		tprogdelta.tv_sec, tprogdelta.tv_nsec,
                 srcmsg.process_id, srcmsg.sec_tdelta, srcmsg.nsec_tdelta);
-
         break;
+
     default:
         /* Other types are invalid */
         break;
@@ -286,7 +288,8 @@ int main(int argc, char *argv[])
     int res = 0;
     
     if (0 != (res = parse_sup_params(argc, argv, &fname, &logfname,
-                                     &concurency_ratio, &election_interval))) {
+                                     &concurency_ratio, &max_concurrent_proc,
+                                     &election_interval))) {
         dbg_err("parse_args() returned nonzero status:%d", res);
         goto end;
     }
@@ -301,13 +304,25 @@ int main(int argc, char *argv[])
     dbg_msg("nodes has %d elements", nodes_count);
 
     /* compute the number of maximum concurrent processes (nearest integer) */
-    max_concurrent_proc = (nodes_count * concurency_ratio + 50) / 100;
-    if (max_concurrent_proc < 2) {
-        dbg_err("concurency ratio set too low. At least 2 processes must be concurent.");
-        goto end;
+    if (max_concurrent_proc != 0) {
+        /* The '-c' option was specified on the command line */
+        fixed_concurent_num = TRUE;
     } else {
-        dbg_msg("max_concurrent_proc=%d", max_concurrent_proc);
+        /* Compute based on concurrency ratio */
+        max_concurrent_proc = (nodes_count * concurency_ratio + 50) / 100;
+        fixed_concurent_num = FALSE;
     }
+
+    if (max_concurrent_proc < 2) {
+        dbg_err("concurrency ratio or number set too low. At least 2 processes must be concurrent.");
+        goto end;
+    } else if (max_concurrent_proc > nodes_count) {
+        dbg_err("concurrency number is greater than total number of processes. Setting it to maximum.");
+        max_concurrent_proc = nodes_count;
+    }
+
+    dbg_msg("max_concurrent_proc=%d", max_concurrent_proc);
+
     randomizer_init();
     
     /* Allocate the statistics collection storage and open the log file */
