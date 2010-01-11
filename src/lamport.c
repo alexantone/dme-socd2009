@@ -477,7 +477,6 @@ int process_ev_exited_cr(void * cookie)
 
 int main(int argc, char *argv[])
 {
-    FILE *fh;
     int res = 0;
     
     if (0 != (res = parse_peer_params(argc, argv, &proc_id, &fname))) {

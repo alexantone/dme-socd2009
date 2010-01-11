@@ -138,8 +138,8 @@ static int ricart_msg_parse(buff_t buff, ricart_message_t * msg) {
     msg->tstamp_nsec = ntohl(src->tstamp_nsec);
     msg->type = ntohl(src->type);
     msg->pid = ntohq(src->pid);
-    dbg_msg("msg parse from %d , type = %d ",msg->pid, msg->type);
-    dbg_msg("src msg parse timestamp  = %lu sec %lu nsec", msg->tstamp_sec , msg->tstamp_nsec);
+    dbg_msg("msg parse from %llu , type = %u ",msg->pid, msg->type);
+    dbg_msg("src msg parse timestamp  = %u sec %u nsec", msg->tstamp_sec , msg->tstamp_nsec);
 }
 
 /*
@@ -256,20 +256,20 @@ static int handle_peer_msg(void * cookie) {
         if (srcmsg.type == MTYPE_REQUEST) {
             dbg_msg("Recieved a REQUEST message from %llu", srcmsg.pid);
 
-            dbg_msg("my timestamp  = %lu sec %lu nsec", my_tstamp_sec , my_tstamp_nsec);
-            dbg_msg("src timestamp = %lu sec %lu nsec", srcmsg.tstamp_sec, srcmsg.tstamp_nsec);
+            dbg_msg("my timestamp  = %u sec %u nsec", my_tstamp_sec , my_tstamp_nsec);
+            dbg_msg("src timestamp = %u sec %u nsec", srcmsg.tstamp_sec, srcmsg.tstamp_nsec);
             if ( srcmsg.tstamp_sec > my_tstamp_sec){
                 ricart_RD[(unsigned int)srcmsg.pid] = 1;
             }else if ( srcmsg.tstamp_sec < my_tstamp_sec){
                 ricart_msg_set(&dstmsg, MTYPE_REPLY);
                 dme_send_msg(srcmsg.pid, (uint8*)&dstmsg, RICART_MSG_LEN);
-                dbg_msg("sending REPLY msg to %d\n",srcmsg.pid);
+                dbg_msg("sending REPLY msg to %llu\n",srcmsg.pid);
             }else if ( srcmsg.tstamp_nsec > my_tstamp_nsec){
                 ricart_RD[(unsigned int)srcmsg.pid] = 1;
             }else if ( srcmsg.tstamp_nsec < my_tstamp_nsec){
                 ricart_msg_set(&dstmsg, MTYPE_REPLY);
                 dme_send_msg(srcmsg.pid, (uint8*)&dstmsg, RICART_MSG_LEN);
-                dbg_msg("sending REPLY msg to %d\n",srcmsg.pid);
+                dbg_msg("sending REPLY msg to %llu\n",srcmsg.pid);
             }
         }else  if (srcmsg.type == MTYPE_REPLY) {
              /* We're waiting for replies from all other peers */
@@ -319,7 +319,7 @@ int process_ev_want_cr(void * cookie)
     ricart_msg_set(&dstmsg, MTYPE_REQUEST);
     my_tstamp_sec = ntohl(dstmsg.tstamp_sec);
     my_tstamp_nsec = ntohl(dstmsg.tstamp_nsec);
-    dbg_msg("my timestamp  = %lu sec %lu nsec", my_tstamp_sec , my_tstamp_nsec);
+    dbg_msg("my timestamp  = %u sec %u nsec", my_tstamp_sec , my_tstamp_nsec);
   
     err = dme_broadcast_msg((uint8*)&dstmsg, RICART_MSG_LEN);
     
@@ -386,7 +386,6 @@ int process_ev_exited_cr(void * cookie)
 
 int main(int argc, char *argv[])
 {
-    FILE *fh;
     int res = 0;
     int ix = 0;
     if (0 != (res = parse_peer_params(argc, argv, &proc_id, &fname))) {
