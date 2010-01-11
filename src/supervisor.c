@@ -113,7 +113,9 @@ int do_work(void * cookie) {
     
     /* If the critical region is free, elect processes to compete for it */
     if (critical_region_is_idlle() && concurrent_count > 0) {
-    	/* First collect statistics from last test run */
+    	/*
+    	 * First collect statistics from last test run
+    	 */
     	if (elected_proc_count > 0 && received_resps_count > 0) {
     		dbg_msg("Collecting statistics for test run %d", test_number);
     		if (received_resps_count < elected_proc_count) {
@@ -125,11 +127,11 @@ int do_work(void * cookie) {
     		avg_synchro_time = timespec_avg(synchro_delays, received_resps_count);
     		avg_resp_time = timespec_avg(response_times, received_resps_count);
 
-    		dbg_msg("Test %2d: procs=%d avg_resp_time=%ld.%09lu avg_synchro_time=%ld.%09lu",
+    		dbg_msg("Test %2d: procs=%d avg_synchro_time=%ld.%09lu avg_resp_time=%ld.%09lu",
     				test_number, elected_proc_count,
     				avg_synchro_time.tv_sec, avg_synchro_time.tv_nsec,
     				avg_resp_time.tv_sec, avg_resp_time.tv_nsec);
-    		log_msg("Test %2d: procs=%d avg_resp_time=%ld.%09lu avg_synchro_time=%ld.%09lu",
+    		log_msg("Test %2d: procs=%d avg_synchro_time=%ld.%09lu avg_resp_time=%ld.%09lu",
     				test_number, elected_proc_count,
     				avg_synchro_time.tv_sec, avg_synchro_time.tv_nsec,
     				avg_resp_time.tv_sec, avg_resp_time.tv_nsec);
@@ -163,8 +165,9 @@ int do_work(void * cookie) {
     	}
     	fflush(log_fh);
 
-    	/* prepare the test */
-
+    	/*
+    	 * Prepare the test
+    	 */
     	elected_proc_count = concurrent_count;
     	received_resps_count = 0;
     	memset(synchro_delays, 0, nodes_count * sizeof(synchro_delays[0]));
@@ -220,9 +223,9 @@ int process_messages(void * cookie)
     dbg_msg("");
     sup_message_t srcmsg = {};
     int err = 0;
-    struct timespec tnow;
-    struct timespec tdelta;
-    struct timespec tprogdelta;
+    timespec_t tnow;
+    timespec_t tdelta;
+    timespec_t tprogdelta;
     
     if (err = sup_msg_parse(*(buff_t *)cookie, &srcmsg)) {
         return err;
@@ -244,6 +247,14 @@ int process_messages(void * cookie)
         synchro_delays[received_resps_count].tv_sec = tdelta.tv_sec;
         synchro_delays[received_resps_count].tv_nsec = tdelta.tv_nsec;
 
+        /* Get the response time */
+        response_times[received_resps_count].tv_sec = srcmsg.sec_tdelta;
+        response_times[received_resps_count].tv_nsec = srcmsg.nsec_tdelta;
+
+        /* Advance the responses counter */
+        received_resps_count++;
+        dbg_msg("received_resps_count = %u", received_resps_count);
+
         if (!critical_region_is_sane()) {
             dbg_err("Unfortunately there are multiple processes in the CS at the same time!");
             err = ERR_FATAL;
@@ -261,11 +272,6 @@ int process_messages(void * cookie)
         		tprogdelta.tv_sec, tprogdelta.tv_nsec,
                 srcmsg.process_id, srcmsg.sec_tdelta, srcmsg.nsec_tdelta);
 
-        /* Get the response time */
-        response_times[received_resps_count].tv_sec = srcmsg.sec_tdelta;
-        response_times[received_resps_count].tv_nsec = srcmsg.nsec_tdelta;
-        received_resps_count++;
-        dbg_msg("received_resps_count = %u", received_resps_count);
         break;
     default:
         /* Other types are invalid */
