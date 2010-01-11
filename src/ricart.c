@@ -1,7 +1,7 @@
 /*
- * src/lamport.c
+ * src/ricart.c
  *
- * Lamport's algorithm.
+ * Ricart-Agrawala algorithm.
  *
  *  Created on: Nov 6, 2009
  *      Author: iulia
@@ -447,6 +447,8 @@ end:
     }
 
     safe_free(nodes);
+    safe_free(ricart_replies);
+    safe_free(ricart_RD);
 
     return res;
 }
