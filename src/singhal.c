@@ -44,8 +44,11 @@ bool_t Requesting; 	 /* true if the fsm_state is PS_PENDING */
 bool_t Executing;    /* true if the fsm_state is PS_EXECUTING */
 bool_t My_priority;  /* true if the pending request of peer i has priority over the current incoming request */
 
-int * Ri, * Ri_val;   /* The requesting set*/
-int * Ii;   		  /* The information set */
+typedef bool_t * nodes_set_t;
+nodes_set_t Ri = NULL;  /* The requesting set*/
+nodes_set_t Ii = NULL;  /* The information set */
+
+uint32 * Ri_val = NULL;
 
 /*
  * Structure of the Singhal DME message
@@ -62,26 +65,65 @@ typedef struct singhal_message_s singhal_message_t;
 #define SINGHAL_MSG_LEN  (sizeof(singhal_message_t))
 #define SINGHAL_DATA_LEN (SINGHAL_MSG_LEN - DME_MESSAGE_HEADER_LEN)
 
-typedef struct request_queue_elem_s {
+typedef struct request_s {
     uint32 sec_tstamp;
     uint32 nsec_tstamp;
     proc_id_t pid;
-    struct request_queue_elem_s * next;
-} request_queue_elem_t;
+} request_t;
 
-static request_queue_elem_t * request_queue = NULL;
-static request_queue_elem_t * my_request;
 
+static request_t pending_request;
 /*
  * Helper functions.
  */
 
+static void init_Ri(proc_id_t pid)
+{
+    if (pid < 1 || pid > nodes_count) {
+            return;
+    }
 
+    /* Ri is 1 based. Element 0 is ignored */
+    memset(Ri, FALSE, nodes_count + 1);
+    memset(Ri, TRUE, pid);
+}
+
+static void init_Ii(proc_id_t pid)
+{
+    if (pid < 1 || pid > nodes_count) {
+            return;
+    }
+
+    /*
+     * Ii is 1 based. Element 0 is ignored.
+     * Ii should contain only our pid, but we never use it so we make it void.
+     */
+    memset(Ii, FALSE, nodes_count + 1);
+}
+
+static inline void add_to_set(nodes_set_t set, proc_id_t pid)
+{
+    if (pid > 1 && pid <= nodes_count) {
+        set[pid] = TRUE;
+    }
+}
+
+static inline void remove_from_set(nodes_set_t set, proc_id_t pid)
+{
+    if (pid > 1 && pid <= nodes_count) {
+        set[pid] = FALSE;
+    }
+}
+
+/*
+ * It's very important not to add self to Ri.
+ * Asking self for permission is pointless and makes this important test fail
+ */
 static bool_t void_Ri(void)
 {
 	int ix = 1;
 	for (; ix <= nodes_count; ix++) {
-		if (Ri[ix] == 1) {
+		if (Ri[ix]) {
 			return FALSE;
 		}
 	}
@@ -94,8 +136,8 @@ static bool_t void_Ri(void)
 /*
  * Give a result similar to strcmp
  */
-static int req_elmt_cmp(const request_queue_elem_t * const a,
-                        const request_queue_elem_t * const b) {
+static int request_prio_cmp(const request_t * const a,
+                        const request_t * const b) {
     if ((a->sec_tstamp < b->sec_tstamp) ||
         (a->sec_tstamp == b->sec_tstamp) && (a->nsec_tstamp < b->nsec_tstamp) ||
         (a->sec_tstamp == b->sec_tstamp) && (a->nsec_tstamp == b->nsec_tstamp) && (a->pid < b->pid))
@@ -103,83 +145,6 @@ static int req_elmt_cmp(const request_queue_elem_t * const a,
         return -1;
     }
     return 1;
-}
-
-static void request_queue_insert(request_queue_elem_t * const elmt) {
-    request_queue_elem_t * cx = request_queue;  /* current element */
-    request_queue_elem_t * px = request_queue;  /* previous element */
-    /* if queue is empty just create the queue */
-    dbg_msg("QUEUE: current top pid is %llu@%p",
-            request_queue ? request_queue->pid : -1, request_queue);
-    if (!request_queue) {
-        request_queue = elmt;
-        request_queue->next = NULL;
-        dbg_msg("QUEUE: new top pid is %llu@0x%p",
-                request_queue ? request_queue->pid : -1, request_queue);
-        return;
-    }
-
-    /* search for the right spot to insert this element */
-    while (cx && req_elmt_cmp(elmt, cx) > 0 ) {
-        px = cx;
-        cx = cx->next;
-    }
-
-    if (cx == request_queue) {
-        /* The element must become the new head of queue */
-        request_queue = elmt;
-        elmt->next = cx;
-    } else {
-        /* Normal insertion */
-        px->next = elmt;
-        elmt->next = cx;
-    }
-    dbg_msg("QUEUE: new top pid is %llu@0x%p",
-            request_queue ? request_queue->pid : -1, request_queue);
-}
-
-static void request_queue_pop(void){
-    request_queue_elem_t * px = request_queue;
-
-    dbg_msg("QUEUE: current top pid is %llu@0x%p",
-            request_queue ? request_queue->pid : -1, request_queue);
-
-    if (request_queue) {
-        request_queue = request_queue->next;
-        safe_free(px);
-    }
-    dbg_msg("QUEUE: new top pid is %llu@0x%p",
-            request_queue ? request_queue->pid : -1, request_queue);
-}
-
-/*
- * Checks if it's this processes turn to enter the CS
- */
-static bool_t my_turn(void) {
-    int ix;
-    bool_t keep_going = TRUE;
-    /* First check if all the replies arrived from the other peers */
-    for (ix = 1; ix < proc_id && keep_going; ix++) {
-    	if (Ri[ix] == 1)
-    		keep_going = keep_going && (Ri_val[ix]);
-    }
-
-    if (!keep_going) {
-    	return FALSE;
-    }
-    dbg_msg("Passed first part");
-
-    for (ix = proc_id + 1; ix <= nodes_count && keep_going; ix++) {
-    	if (Ri[ix] == 1)
-    		keep_going = keep_going && (Ri_val[ix]);
-    }
-
-    if (!keep_going) {
-    	return FALSE;
-    }
-    dbg_msg("Passed second part");
-
-    return TRUE;
 }
 
 static void peer_msg_add_timestamp(singhal_message_t * msg) {
@@ -264,20 +229,22 @@ static int supervisor_send_inform_message(dme_ev_t ev) {
 }
 
 /*
- * Sends messages only to those sites specified in the Ri (Ri[pid] == 1) or Ii (Ii[pid] == 1)
+ * Sends messages only to those sites present in 'set' (except self)
  */
-
-int singhal_set_msg_send (uint8 * buff, size_t len, int * Xi) {
+int singhal_set_msg_send (uint8 * buff, size_t len, nodes_set_t set) {
     int ix = 0;
     int ret = 0;
 
     for (ix = 1; ix < proc_id && !ret; ix++) {
-    	if (Xi[ix] == 1 )
+    	if (set[ix]) {
     		ret |= dme_send_msg(ix, buff, len);
+    	}
     }
+
     for (ix = proc_id + 1; ix <= nodes_count && !ret; ix++) {
-    	if (Xi[ix] == 1 )
+    	if (set[ix]) {
     		ret |= dme_send_msg(ix, buff, len);
+    	}
     }
 
     return ret;
@@ -317,9 +284,6 @@ static int handle_supervisor_msg(void * cookie) {
 
     /* The supervisor should not send a message in these states */
     case PS_PENDING:
-    	/* eu */
-    	dbg_msg("Ignoring message from supervisor (not in IDLE state).");
-    	break; /**/
     case PS_EXECUTING:
         dbg_msg("Ignoring message from supervisor (not in IDLE state).");
         break;
@@ -338,7 +302,8 @@ static int handle_peer_msg(void * cookie) {
     dbg_msg("");
     singhal_message_t srcmsg = {};
     singhal_message_t dstmsg = {};
-    request_queue_elem_t * req = NULL;
+    request_t req = {};
+    proc_id_t Sj;
     int ret = 0;
     const buff_t * buff = (buff_t *)cookie;
     int ix;
@@ -348,85 +313,91 @@ static int handle_peer_msg(void * cookie) {
         return ERR_RECV_MSG;
     }
 
-    singhal_msg_parse(*buff, &srcmsg);
 
+    /*
+     * The Singhal's algorithm uses it's own state variables (Requesting & Executing).
+     * The FSM states are only used in supervisor communication.
+     * Nevertheless a routine sanity check would prevent the algorithm from
+     * advancing in case of state corruption.
+     */
+    /* FSM sanity check */
     switch(fsm_state) {
     case PS_IDLE:
-    	if (srcmsg.type == MTYPE_REQUEST) {
-	        dbg_msg("Recieved a REQUEST message");
-
-	       /* Send back the REPLY message */
-    	   singhal_msg_set(&dstmsg, MTYPE_REPLY);
-    	   dme_send_msg(srcmsg.pid, (uint8*)&dstmsg, SINGHAL_MSG_LEN);
-
-    	   Ri[srcmsg.pid] = 1;
-
-    	} else {
-            dbg_err("Protocol error: recieved a singhal REPLY (%d) message while in state PS_IDLE",
-            		srcmsg.type);
-            ret = ERR_RECV_MSG;
-        }
-    	break;
-
     case PS_EXECUTING:
-    	Ii[srcmsg.pid] = 1;
-    	break;
-
     case PS_PENDING:
-        if (srcmsg.type == MTYPE_REQUEST) {
-            dbg_msg("Recieved a REQUEST message from %llu", srcmsg.pid);
-
-            /*comparing timestamps from the recieved message and my_request*/
-            req = calloc(1, sizeof(request_queue_elem_t));
-            req->sec_tstamp = srcmsg.tstamp_sec;
-            req->nsec_tstamp = srcmsg.tstamp_nsec;
-            req->pid = srcmsg.pid;
-
-
-            if (my_request && req_elmt_cmp(req, my_request) > 0)
-            	My_priority = TRUE;
-            else
-            	My_priority = FALSE;
-
-            if (My_priority) {
-            	Ii[srcmsg.pid] = 1;
-            	ret = handle_event(DME_EV_ENTERED_CRITICAL_REG, NULL);
-            } else {
-            	/* Send back the REPLY message */
-                singhal_msg_set(&dstmsg, MTYPE_REPLY);
-                dme_send_msg(srcmsg.pid, (uint8*)&dstmsg, SINGHAL_MSG_LEN);
-
-                /* Insert message source site into Ri if it's not in*/
-                if (Ri[srcmsg.pid] == 0){
-                	Ri[srcmsg.pid] = 1;
-             	    }
-
-            }
-        } else if (srcmsg.type == MTYPE_REPLY) {
-        /* We're waiting for replies from all other peers */
-            dbg_msg("Recieved a REPLY message from %llu", srcmsg.pid);
-
-            Ri_val[srcmsg.pid] = 1;
-
-            for (ix = 1 ; ix <= nodes_count; ix++) {
-                dbg_msg("Ri_val[%d] = %d" , ix, Ri_val[ix] ? 0 : 1);
-            }
-            /* check if this process can run now */
-            if (my_turn()) {
-                dbg_msg("My turn now!!!");
-                ret = handle_event(DME_EV_ENTERED_CRITICAL_REG, NULL);
-            }
-        } else {
-            dbg_err("Protocol error: recieved an unknown message type (%d) while in state PS_PENDING",
-                    srcmsg.type);
-            ret = ERR_RECV_MSG;
-        }
         break;
-
     default:
         dbg_err("Fatal error: FSM state corrupted");
         ret = ERR_FATAL;
+        return ret;
         break;
+    }
+
+    /* Parsing and processing received message */
+    singhal_msg_parse(*buff, &srcmsg);
+
+    if (srcmsg.type == MTYPE_REQUEST) {
+        /*
+         * Emulate the REQUEST message handler
+         */
+
+        dbg_msg("Received a REQUEST message from %llu", srcmsg.pid);
+        req.sec_tstamp = srcmsg.tstamp_sec;
+        req.nsec_tstamp = srcmsg.tstamp_nsec;
+        req.pid = srcmsg.pid;
+        Sj = req.pid;
+
+        if (Requesting) {
+            My_priority = request_prio_cmp(&req, &pending_request) > 0;
+
+            if (My_priority) {
+                add_to_set(Ii, Sj);
+            } else {
+                /* Send back the REPLY message */
+                singhal_msg_set(&dstmsg, MTYPE_REPLY);
+                dme_send_msg(Sj, (uint8*)&dstmsg, SINGHAL_MSG_LEN);
+
+                if(!Ri[Sj]) {
+                    add_to_set(Ri, Sj);
+
+                    /*
+                     * Send REQ to Sj and update our pending request's time stamp.
+                     * (Equivalent to updating the logical lamport clock)
+                     */
+                    singhal_msg_set(&dstmsg, MTYPE_REPLY);
+                    pending_request.sec_tstamp = ntohl(dstmsg.tstamp_sec);
+                    pending_request.nsec_tstamp = ntohl(dstmsg.tstamp_nsec);
+
+                    dme_send_msg(Sj, (uint8*)&dstmsg, SINGHAL_MSG_LEN);
+                }
+            }
+        }
+        else if (Executing) {
+            add_to_set(Ii, Sj);
+        }
+        else if (!Executing && !Requesting) {
+            /* The cpndition is not necessary because it's implied by 'else' */
+            add_to_set(Ri, Sj);
+            /* Send the REPLY message */
+            singhal_msg_set(&dstmsg, MTYPE_REPLY);
+            dme_send_msg(Sj, (uint8*)&dstmsg, SINGHAL_MSG_LEN);
+        }
+
+    } else if (srcmsg.type == MTYPE_REPLY) {
+        /*
+         * Emulate the REPLY message handler
+         */
+        remove_from_set(Ri, Sj);
+
+        /* also were're waiting for Ri to become void when we've made a request */
+        if (Requesting && void_Ri()) {
+            ret = handle_event(DME_EV_ENTERED_CRITICAL_REG, NULL);
+        }
+
+    } else {
+        dbg_err("Protocol error: received an unknown message type (%d).",
+                srcmsg.type);
+        ret = ERR_RECV_MSG;
     }
 
     return ret;
@@ -438,7 +409,6 @@ static int handle_peer_msg(void * cookie) {
 int process_ev_want_cr(void * cookie)
 {
     singhal_message_t dstmsg = {};
-    request_queue_elem_t * req = NULL;
     int err = 0;
 
     dbg_msg("Entered DME_EV_WANT_CRITICAL_REG");
@@ -449,27 +419,28 @@ int process_ev_want_cr(void * cookie)
     }
 
 
-    /* Switch to the pending state and send informs to peers */
+    /* Switch to the pending state */
     fsm_state = PS_PENDING;
 
-    /* Clear the table of REPLY messages from peers */
-    //memset(Ri, 0, nodes_count * sizeof(bool_t));
-
+    Requesting = TRUE;
 
     singhal_msg_set(&dstmsg, MTYPE_REQUEST);
 
-    if (!void_Ri()) {
-    	err = singhal_set_msg_send((uint8*)&dstmsg, SINGHAL_MSG_LEN, Ri);
-    } else{
-    	/* remember last request*/
-    	my_request = calloc(1, sizeof(request_queue_elem_t));
-    	my_request->sec_tstamp = ntohl(dstmsg.tstamp_sec);
-    	my_request->nsec_tstamp = ntohl(dstmsg.tstamp_nsec);
-    	my_request->pid = ntohq(dstmsg.pid);
+    /* Record my request's time stamp and save o copy of this REQUEST message*/
+    pending_request.sec_tstamp = ntohl(dstmsg.tstamp_sec);
+    pending_request.nsec_tstamp = ntohl(dstmsg.tstamp_nsec);
 
+    /* Ask permission from all sites in Ri */
+    err = singhal_set_msg_send((uint8*)&dstmsg, SINGHAL_MSG_LEN, Ri);
+
+    /* if Ri is void we can enter the CS directly */
+    if (void_Ri()) {
     	err = handle_event(DME_EV_ENTERED_CRITICAL_REG, NULL);
+    } else {
+        /* Ri will be checked if it's void when processing REPLY messages */
     }
 
+    return err;
 }
 
 
@@ -478,7 +449,6 @@ int process_ev_want_cr(void * cookie)
  */
 int process_ev_entered_cr(void * cookie)
 {
-    dbg_msg("");
     int err = 0;
 
     dbg_msg("Entered DME_EV_ENTERED_CRITICAL_REG");
@@ -492,11 +462,13 @@ int process_ev_entered_cr(void * cookie)
     supervisor_send_inform_message(DME_EV_ENTERED_CRITICAL_REG);
     fsm_state = PS_EXECUTING;
 
+    Requesting = FALSE;
+    Executing = TRUE;
+
     /* Finish our simulated work after the ammount of time specified by the supervisor */
     schedule_event(DME_EV_EXITED_CRITICAL_REG,
                    critical_region_simulated_duration, 0, NULL);
 
-    dbg_msg("Exitting");
     return err;
 }
 
@@ -507,8 +479,9 @@ int process_ev_exited_cr(void * cookie)
 {
     singhal_message_t msg = {};
     int err = 0;
-    dbg_msg("");
     int ix;
+
+    dbg_msg("Entered DME_EV_EXITED_CRITICAL_REG handler");
 
     if (fsm_state != PS_EXECUTING) {
         dbg_err("Fatal error: DME_EV_EXITED_CRITICAL_REG occured while not in EXECUTING state.");
@@ -519,21 +492,19 @@ int process_ev_exited_cr(void * cookie)
     supervisor_send_inform_message(DME_EV_EXITED_CRITICAL_REG);
     fsm_state = PS_IDLE;
 
-    /*	Empty Ri set */
-    memset(Ri, 0,( nodes_count + 1) * sizeof(Ri[0]));
-    memset(Ri_val, 0,( nodes_count + 1) * sizeof(Ri_val[0]));
+    Executing = FALSE;
 
     /* inform all peers from Ii that we left the CS */
     singhal_msg_set(&msg, MTYPE_REPLY);
 
     err = singhal_set_msg_send((uint8*)&msg, SINGHAL_MSG_LEN, Ii);
 
-    for (ix = 1; ix <= nodes_count; ix++)
-    	if ( Ii[ix] == 1 )
-    	{
-    		Ii[ix] = 0;
-    		Ri[ix] = 1;
+    for (ix = 1; ix <= nodes_count; ix++) {
+    	if (Ii[ix] == TRUE) {
+    		remove_from_set(Ii, ix);
+    		add_to_set(Ri, ix);
     	}
+    }
 
     return err;
 }
@@ -559,11 +530,11 @@ int main(int argc, char *argv[])
     dbg_msg("nodes has %d elements", nodes_count);
 
     /* Create the request set */
-    Ri = calloc(nodes_count + 1, sizeof(int));
-    Ri_val = calloc(nodes_count + 1, sizeof(int));
+    Ri = calloc(nodes_count + 1, sizeof(bool_t));
+    Ri_val = calloc(nodes_count + 1, sizeof(uint32));
 
-    /* Create the information set */
-    Ii = calloc(nodes_count + 1, sizeof(int));
+    /* Create the inform set */
+    Ii = calloc(nodes_count + 1, sizeof(bool_t));
 
     /*
      * Init connections (open listenning socket)
@@ -591,11 +562,9 @@ int main(int argc, char *argv[])
 
     /*
      * Initializing Singhal specific variables
-     *
      */
-    for (ix = 1 ; ix < proc_id; ix++ ) {
-    	Ri[ix] = 1;
-    }
+    init_Ri(proc_id);
+    init_Ii(proc_id);
 
     Requesting = FALSE;
     Executing = FALSE;
