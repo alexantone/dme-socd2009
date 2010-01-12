@@ -395,7 +395,7 @@ static int handle_peer_msg(void * cookie) {
                      * Send REQ to Sj and update our pending request's time stamp.
                      * (Equivalent to updating the logical lamport clock)
                      */
-                    singhal_msg_set(&dstmsg, MTYPE_REPLY);
+                    singhal_msg_set(&dstmsg, MTYPE_REQUEST);
                     pending_request.sec_tstamp = ntohl(dstmsg.tstamp_sec);
                     pending_request.nsec_tstamp = ntohl(dstmsg.tstamp_nsec);
 
