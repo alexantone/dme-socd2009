@@ -77,6 +77,23 @@ static request_t pending_request;
  * Helper functions.
  */
 
+static void print_set_elements(nodes_set_t set, const char * set_name)
+{
+    char strbuff[256] = {};
+    char *px = strbuff;
+    int ix = 1;
+
+    while (ix <= nodes_count && (sizeof(strbuff) - (px - strbuff)) > 1) {
+        if (set[ix]) {
+            px += snprintf(px, sizeof(strbuff) - (px - strbuff) - 1, "%d, ", ix);
+        }
+        ix++;
+    }
+
+    dbg_msg("%s@%p contents : %s", set_name, set, strbuff);
+}
+#define print_set(S) print_set_elements(S, #S);
+
 static void init_Ri(proc_id_t pid)
 {
     if (pid < 1 || pid > nodes_count) {
@@ -86,6 +103,7 @@ static void init_Ri(proc_id_t pid)
     /* Ri is 1 based. Element 0 is ignored */
     memset(Ri, FALSE, nodes_count + 1);
     memset(Ri, TRUE, pid);
+    print_set(Ri);
 }
 
 static void init_Ii(proc_id_t pid)
@@ -99,21 +117,30 @@ static void init_Ii(proc_id_t pid)
      * Ii should contain only our pid, but we never use it so we make it void.
      */
     memset(Ii, FALSE, nodes_count + 1);
+    print_set(Ii);
 }
 
-static inline void add_to_set(nodes_set_t set, proc_id_t pid)
+static inline void add_site_to_set(nodes_set_t set, proc_id_t pid,
+                                   const char * set_name)
 {
-    if (pid > 1 && pid <= nodes_count) {
+    dbg_msg("Adding to set %s site %llu", set_name, pid);
+    if (pid >= 1 && pid <= nodes_count && pid != proc_id) {
         set[pid] = TRUE;
     }
+    print_set(set);
 }
+#define add_to_set(set, site) add_site_to_set(set, site, #set)
 
-static inline void remove_from_set(nodes_set_t set, proc_id_t pid)
+static inline void remove_site_from_set(nodes_set_t set, proc_id_t pid,
+                                        const char * set_name)
 {
-    if (pid > 1 && pid <= nodes_count) {
+    dbg_msg("Removing from set %s site %llu", set_name, pid);
+    if (pid >= 1 && pid <= nodes_count) {
         set[pid] = FALSE;
     }
+    print_set(set);
 }
+#define remove_from_set(set, site) remove_site_from_set(set, site, #set)
 
 /*
  * It's very important not to add self to Ri.
@@ -121,6 +148,7 @@ static inline void remove_from_set(nodes_set_t set, proc_id_t pid)
  */
 static bool_t void_Ri(void)
 {
+    print_set(Ri);
 	int ix = 1;
 	for (; ix <= nodes_count; ix++) {
 		if (Ri[ix]) {
@@ -335,6 +363,7 @@ static int handle_peer_msg(void * cookie) {
 
     /* Parsing and processing received message */
     singhal_msg_parse(*buff, &srcmsg);
+    Sj = srcmsg.pid;
 
     if (srcmsg.type == MTYPE_REQUEST) {
         /*
@@ -345,19 +374,21 @@ static int handle_peer_msg(void * cookie) {
         req.sec_tstamp = srcmsg.tstamp_sec;
         req.nsec_tstamp = srcmsg.tstamp_nsec;
         req.pid = srcmsg.pid;
-        Sj = req.pid;
 
         if (Requesting) {
             My_priority = request_prio_cmp(&req, &pending_request) > 0;
 
             if (My_priority) {
+                dbg_msg("My pending request has priority.");
                 add_to_set(Ii, Sj);
             } else {
                 /* Send back the REPLY message */
+                dbg_msg("Received request has priority. Sending REPLY to %llu", Sj);
                 singhal_msg_set(&dstmsg, MTYPE_REPLY);
                 dme_send_msg(Sj, (uint8*)&dstmsg, SINGHAL_MSG_LEN);
 
                 if(!Ri[Sj]) {
+                    dbg_msg("Site %llu was not in Ri. Adding it now.", Sj);
                     add_to_set(Ri, Sj);
 
                     /*
@@ -373,10 +404,12 @@ static int handle_peer_msg(void * cookie) {
             }
         }
         else if (Executing) {
+            dbg_msg("Executing CS. Defer reply to %llu (add site to Ii)", Sj);
             add_to_set(Ii, Sj);
         }
         else if (!Executing && !Requesting) {
-            /* The cpndition is not necessary because it's implied by 'else' */
+            /* The condition is not necessary because it's implied by 'else' */
+            dbg_msg("We're idle. Add site %llu to Ri and send REPLY.", Sj);
             add_to_set(Ri, Sj);
             /* Send the REPLY message */
             singhal_msg_set(&dstmsg, MTYPE_REPLY);
@@ -387,10 +420,14 @@ static int handle_peer_msg(void * cookie) {
         /*
          * Emulate the REPLY message handler
          */
+        dbg_msg("Received a REPLY message from %llu", srcmsg.pid);
         remove_from_set(Ri, Sj);
 
         /* also were're waiting for Ri to become void when we've made a request */
+        dbg_msg("");
+        dbg_msg("Test if Ri is void");
         if (Requesting && void_Ri()) {
+            dbg_msg("[**] Ri became void -> we can enter our CS.");
             ret = handle_event(DME_EV_ENTERED_CRITICAL_REG, NULL);
         }
 
@@ -424,17 +461,22 @@ int process_ev_want_cr(void * cookie)
 
     Requesting = TRUE;
 
+    /* Ask permission from all sites in Ri */
+    dbg_msg("");
+    dbg_msg("Ask permission from all sites in Ri.");
+    print_set(Ri);
+
     singhal_msg_set(&dstmsg, MTYPE_REQUEST);
 
     /* Record my request's time stamp and save o copy of this REQUEST message*/
     pending_request.sec_tstamp = ntohl(dstmsg.tstamp_sec);
     pending_request.nsec_tstamp = ntohl(dstmsg.tstamp_nsec);
-
-    /* Ask permission from all sites in Ri */
     err = singhal_set_msg_send((uint8*)&dstmsg, SINGHAL_MSG_LEN, Ri);
 
     /* if Ri is void we can enter the CS directly */
+    dbg_msg("Test if Ri is void");
     if (void_Ri()) {
+        dbg_msg("[**] Ri is void -> we can enter our CS.");
     	err = handle_event(DME_EV_ENTERED_CRITICAL_REG, NULL);
     } else {
         /* Ri will be checked if it's void when processing REPLY messages */
@@ -497,14 +539,27 @@ int process_ev_exited_cr(void * cookie)
     /* inform all peers from Ii that we left the CS */
     singhal_msg_set(&msg, MTYPE_REPLY);
 
+    dbg_msg("");
+    dbg_msg("Inform all sites in Ii.");
+    print_set(Ii);
     err = singhal_set_msg_send((uint8*)&msg, SINGHAL_MSG_LEN, Ii);
 
+    /* Move sites from Ii to Ri */
+    dbg_msg("Move sites from Ii to Ri.");
     for (ix = 1; ix <= nodes_count; ix++) {
     	if (Ii[ix] == TRUE) {
-    		remove_from_set(Ii, ix);
-    		add_to_set(Ri, ix);
+    	    /* commenting function calls to reduce debug messages output */
+    		/*
+                remove_from_set(Ii, ix);
+                add_to_set(Ri, ix);
+    		*/
+
+    	    Ii[ix] = FALSE;
+    	    Ri[ix] = TRUE;
     	}
     }
+    print_set(Ri);
+    print_set(Ii);
 
     return err;
 }
@@ -587,6 +642,9 @@ end:
     }
 
     safe_free(nodes);
+    safe_free(Ri);
+    safe_free(Ii);
+
 
     return res;
 }
