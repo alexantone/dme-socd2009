@@ -85,19 +85,9 @@ static char * token_tostr(struct token_s *tok, char * const buf, size_t len)
     size_t pos = 0;
     int ix;
 
-    pos += snprintf(buf + pos, len - pos, "LN: {");
-    for (ix = 0 ; ix < sizeof(tok->suzuki_LN) && tok->suzuki_LN[ix]; ix++) {
-        pos += snprintf(buf + pos, len - pos, "%u, ", tok->suzuki_LN[ix]);
-    }
-    pos -= 2;
-    pos += snprintf(buf + pos, len - pos, "}\n");
-
-    pos += snprintf(buf + pos, len - pos, "Q: {");
     for (ix = 0 ; ix < sizeof(tok->pseudo_queue) && tok->pseudo_queue[ix]; ix++) {
         pos += snprintf(buf + pos, len - pos, "%u, ", tok->pseudo_queue[ix]);
     }
-    pos -= 2;
-    pos += snprintf(buf + pos, len - pos, "}");
     buf[pos] = '\0';
 
     return buf;
@@ -184,8 +174,7 @@ static int suzuki_msg_set(suzuki_message_t * const msg, unsigned int msgtype,
     msg->token = my_token;
 
 
-    snprintf(msctext, msclen, "%s(pid=%llu, reqno=%u,\n"
-                              "   tok: {%s})",
+    snprintf(msctext, msclen, "%s(pid=%llu, reqno=%u,tok: {%s})",
              msg_type_tostr(msgtype), proc_id, suzuki_RN[proc_id],
              token_tostr(&my_token, tokbuf, sizeof(tokbuf)));
 

@@ -9,10 +9,10 @@ USAGEMSG="Usage:\n"\
 "                  [-f <config-file>] [-r <concurency ratio>] [-t <sec interval>]\n"\
 "                  [-o <out-logfile>]\n\n"\
 "By default the algorithm is lamport. See build/ for other algorithms.\n"\
-"Default parameter for supervisor are:\n\t'$SUPERVISOR_ARGS'\n"
+"Default parameter for supervisor are:\n\t'$SUPDEF_ARGS'\n"
 
 
-[ "$1" == "-h" ] && {
+[ "$1" == "-h" ] || [ "$1" == "--help" ] && {
     echo -e "$USAGEMSG"
     exit
 }
