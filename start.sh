@@ -26,11 +26,18 @@ USAGEMSG="Usage:\n"\
 
 for (( ix = 1; ix <= NPROC; ix++ )) ; do
         echo "Starting process $ix ..."
-        xtermcmd="./build/$ALGORITHM -i $ix -f dme.conf;\
+        xtermcmd="./build/$ALGORITHM -i $ix -f dme.conf | tee $ALGORITHM$ix.lgx;\
                   read -p'----------Execution finished----------'"
         xterm -geometry 140x20 -T "$ix: $ALGORITHM - Process $ix" -e "$xtermcmd" &
         sleep 0.333
 done
 
 echo "Starting supervisor ..."
-xterm -geometry 140x20 -T "Supervisor" -e "./build/supervisor $SUPDEF_ARGS $SUPERVISOR_ARGS ; read -p'--exited--'" &
+xterm -geometry 140x20 -T "Supervisor" -e "./build/supervisor $SUPDEF_ARGS $SUPERVISOR_ARGS | tee ${ALGORITHM}0.lgx ; read -p'--exited--'" ;
+
+#Merge outputs
+cat ./${ALGORITHM}*\.lgx | sort -u | cut -d '#' -f 2 > ${ALGORITHM}.msc
+rm -f ./${ALGORITHM}*\.lgx
+echo ------- contents of ${ALGORITHM}.msc ---------------------------
+cat ./${ALGORITHM}.msc
+echo ----  paste in http://www.websequencediagrams.com/  -----------------
