@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <time.h>
+#include <string.h>
 
 #include <sys/socket.h>
 #include <common/net.h>
@@ -22,14 +23,64 @@ extern const link_info_t * const nodes;
 extern const size_t nodes_count;
 extern const proc_id_t proc_id;
 
+#define MSC_SEP '|'
 
 static int msc_msg(proc_id_t srcid, proc_id_t dstid, char * const msctext) {
     struct timespec ts;
+    const char * px = NULL;
+    const char * sx = msctext;
+    char linebuf[MAX_MSC_TEXT];
+    int linesize;
+    int linecnt = 0;
 
     clock_gettime(CLOCK_REALTIME, &ts);
-    fprintf(stdout, "%9u.%09u # p%llu->p%llu: %s\n",
-            (uint32)ts.tv_sec, (uint32)ts.tv_nsec,
-            srcid, dstid, msctext);
+
+    bzero(linebuf, sizeof(linebuf));
+    px = strchr(sx, MSC_SEP);
+
+    if (px == NULL) {
+        /* Print to the end of the string */
+        snprintf(linebuf, sizeof(linebuf), "%s", sx);
+    } else {
+        /* Print to next line */
+        snprintf(linebuf, px - sx,  "%s", sx);
+    }
+
+    fprintf(stdout, "%09u.%09u %02d # p%llu->p%llu: %s\n",
+            (uint32)ts.tv_sec, (uint32)ts.tv_nsec, linecnt,
+            srcid, dstid, linebuf);
+    linecnt++;
+
+    /* Print other MSC commands */
+    while (px != NULL) {
+        bzero(linebuf, sizeof(linebuf));
+        sx = ++px;
+        px = strchr(sx, MSC_SEP);
+
+        if (0 == strncmp(sx, "activate_src", 14)) {
+            fprintf(stdout, "%09u.%09u %02d # activate p%llu\n",
+                    (uint32)ts.tv_sec, (uint32)ts.tv_nsec, linecnt,
+                    srcid);
+        }
+        else if (0 == strncmp(sx, "activate_dst", 14)) {
+            fprintf(stdout, "%09u.%09u %02d # activate p%llu\n",
+                    (uint32)ts.tv_sec, (uint32)ts.tv_nsec, linecnt,
+                    dstid);
+        }
+        else if (0 == strncmp(sx, "deactivate_src", 16)) {
+            fprintf(stdout, "%09u.%09u %02d # deactivate p%llu\n",
+                    (uint32)ts.tv_sec, (uint32)ts.tv_nsec, linecnt,
+                    srcid);
+        }
+        else if (0 == strncmp(sx, "deactivate_src", 16)) {
+            fprintf(stdout, "%09u.%09u %02d # deactivate p%llu\n",
+                    (uint32)ts.tv_sec, (uint32)ts.tv_nsec, linecnt,
+                    dstid);
+        }
+
+        linecnt++;
+    }
+
     fflush(stdout);
     return 0;
 }
@@ -135,6 +186,7 @@ int sup_msg_set(sup_message_t * const msg, unsigned int msgtype,
                 uint32 sec_delta, uint32 nsec_delta, unsigned int flags,
                 char * const mscbuf, size_t msclen)
 {
+    char * msccmd = "";
     if (!msg) {
         return ERR_SUP_HDR;
     }
@@ -146,8 +198,15 @@ int sup_msg_set(sup_message_t * const msg, unsigned int msgtype,
     msg->nsec_tdelta = htonl(nsec_delta);
     msg->flags = htonl((uint16)flags);
     
-    snprintf(mscbuf, msclen, "%s(%u.%09u)",
-             evtostr(msgtype), sec_delta, nsec_delta);
+    if (msgtype == DME_EV_ENTERED_CRITICAL_REG) {
+        msccmd = "activate_src";
+    } else if (msgtype == DME_EV_EXITED_CRITICAL_REG) {
+        msccmd = "deactivate_src";
+    }
+
+    snprintf(mscbuf, msclen, "%s(%u.%09u) %c%s",
+             evtostr(msgtype), sec_delta, nsec_delta,
+             MSC_SEP, msccmd);
 
     return 0;
 }
