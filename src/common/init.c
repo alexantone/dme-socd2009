@@ -60,6 +60,7 @@ static dme_ev_reg_t func_registry[] = {
     /* Supervisor events */
     { DME_SEV_MSG_IN, null_func },
     { DME_SEV_PERIODIC_WORK, null_func },
+    { DME_SEV_SYNCRO, null_func },
 
     /* Iternal events are registered statically */
     { DME_IEV_PACK_IN, net_demux },
@@ -78,6 +79,7 @@ const char * evtostr (dme_ev_t event) {
 	case DME_EV_EXITED_CRITICAL_REG: return "DME_EV_EXITED_CRITICAL_REG";
 
 	case DME_SEV_PERIODIC_WORK: return "DME_SEV_PERIODIC_WORK";
+	case DME_SEV_SYNCRO: return "DME_SEV_SYNCRO";
 
 	case DME_IEV_PACK_IN: return "DME_IEV_PACK_IN";
 	}
@@ -278,20 +280,22 @@ static int net_demux(void * cookie)
  * Registers a function to handle a certain event
  */
 void
-register_event_handler (dme_ev_t event, ev_handler_fnct_t func)
+register_event_handler_ (dme_ev_t event, ev_handler_fnct_t func,
+                          char * funcname)
 {
     if (event >= DME_EV_INVALID || event < 0) {
         dbg_err("Invalid event!");
     } else if(event >= DME_INTERNAL_EV_START) {
         dbg_err("Can not register handler for internal events!");
     } else {
-        dbg_msg("get_reg_fp=%-10p *get_reg_fp=%-10p func=%-10p *func=%-10p",
+        dbg_msg("ev_handler(%s) <- %s()", evtostr(event), funcname);
+        dbg_msg("before: regfp=%-10p *regfp=%-10p | func=%-10p *func=%-10p",
                 get_registry_funcp(event), *get_registry_funcp(event),
                 func, *func);
         
         *(get_registry_funcp(event)) = func;
         
-        dbg_msg("get_reg_fp=%-10p *get_reg_fp=%-10p func=%-10p *func=%-10p",
+        dbg_msg("after:  regfp=%-10p *regfp=%-10p | func=%-10p *func=%-10p",
                 get_registry_funcp(event), *get_registry_funcp(event),
                 func, *func);
     }

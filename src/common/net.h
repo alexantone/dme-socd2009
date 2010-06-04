@@ -18,12 +18,12 @@ static inline uint64 htonq(uint64 q) {
     return ((htonl(q >> 32)) | ((uint64)htonl((uint32) q) << 32));
 }
 #define ntohq(q) htonq(q)
+#define MAX_MSC_TEXT 256
 
-
-extern int dme_send_msg(proc_id_t dest, uint8 * buff, size_t len);
+extern int dme_send_msg(proc_id_t dest, uint8 * buff, size_t len, char * const msctext);
 extern int dme_recv_msg(uint8 ** out_buff, size_t * out_len);
 
-extern int dme_broadcast_msg(uint8 * buff, size_t len);
+extern int dme_broadcast_msg(uint8 * buff, size_t len, char * const msctext);
 
 /* Message types for each algorithm */
 typedef enum msg_types_e {
@@ -110,7 +110,8 @@ extern int dme_header_set(dme_message_hdr_t * const hdr, unsigned int msgtype,
                           unsigned int msglen, unsigned int flags);
 
 extern int sup_msg_set(sup_message_t * const msg, unsigned int msgtype,
-                       uint32 sec_delta, uint32 nsec_delta, unsigned int flags);
+                       uint32 sec_delta, uint32 nsec_delta, unsigned int flags,
+                       char * const mscbuf, size_t msclen);
 
 extern int dme_header_parse(buff_t buff, dme_message_hdr_t * const msg);
 extern int sup_msg_parse(buff_t buff, sup_message_t * const msg);

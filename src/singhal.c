@@ -30,6 +30,7 @@ bool_t exit_request = FALSE;
 
 static char * fname = NULL;
 static struct timespec sup_tstamp;      /* used for performance measurements */
+static timespec_t sup_syncro;
 static uint32 critical_region_simulated_duration = 0;
 
 /*
@@ -39,6 +40,15 @@ enum singhal_msg_types {
     MTYPE_REQUEST,
     MTYPE_REPLY,
 };
+
+static inline
+const char * msg_type_tostr(int mtype) {
+    switch(mtype) {
+    case MTYPE_REQUEST: return "REQUEST";
+    case MTYPE_REPLY:   return "REPLY";
+    }
+    return "UNKNOWN";
+}
 
 bool_t Requesting; 	 /* true if the fsm_state is PS_PENDING */
 bool_t Executing;    /* true if the fsm_state is PS_EXECUTING */
@@ -178,14 +188,16 @@ static int request_prio_cmp(const request_t * const a,
 static void peer_msg_add_timestamp(singhal_message_t * msg) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    msg->tstamp_sec = htonl((uint32)ts.tv_sec);
-    msg->tstamp_nsec = htonl((uint32)ts.tv_nsec);
+    msg->tstamp_sec = htonl((uint32)(ts.tv_sec - sup_syncro.tv_sec));
+    msg->tstamp_nsec = htonl((uint32)(ts.tv_nsec - sup_syncro.tv_nsec));
 }
 
 /*
  * Prepare a singhal message for network sending.
  */
-static int singhal_msg_set(singhal_message_t * const msg, unsigned int msgtype) {
+static int singhal_msg_set(singhal_message_t * const msg, unsigned int msgtype,
+                           char * const msctext, size_t msclen)
+{
     if (!msg) {
         return ERR_DME_HDR;
     }
@@ -197,6 +209,9 @@ static int singhal_msg_set(singhal_message_t * const msg, unsigned int msgtype) 
     peer_msg_add_timestamp(msg);
     msg->type = htonl(msgtype);
     msg->pid = htonq(proc_id);
+
+    snprintf(msctext, msclen, "%s(ts=%u.%09u, pid=%llu)", msg_type_tostr(msgtype),
+             ntohl(msg->tstamp_sec), ntohl(msg->tstamp_nsec), proc_id);
 
     return 0;
 }
@@ -227,6 +242,7 @@ static int singhal_msg_parse(buff_t buff, singhal_message_t * msg) {
  */
 static int supervisor_send_inform_message(dme_ev_t ev) {
     sup_message_t msg = {};
+    char msctext[MAX_MSC_TEXT] = {};
     int err = 0;
     struct timespec tnow;
     uint32 elapsed_sec;
@@ -240,8 +256,10 @@ static int supervisor_send_inform_message(dme_ev_t ev) {
         elapsed_nsec = (uint32)(tnow.tv_nsec - sup_tstamp.tv_nsec);
 
         /* construct and send the message */
-        sup_msg_set(&msg, ev, elapsed_sec, elapsed_nsec, 0);
-        err = dme_send_msg(SUPERVISOR_PID, (uint8*)&msg, SUPERVISOR_MESSAGE_LENGTH);
+        sup_msg_set(&msg, ev, elapsed_sec, elapsed_nsec, 0,
+                    msctext, sizeof(msctext));
+        err = dme_send_msg(SUPERVISOR_PID, (uint8*)&msg, SUPERVISOR_MESSAGE_LENGTH,
+                           msctext);
 
         /* set new sup_tstamp to tnow */
         sup_tstamp.tv_sec = tnow.tv_sec;
@@ -259,19 +277,21 @@ static int supervisor_send_inform_message(dme_ev_t ev) {
 /*
  * Sends messages only to those sites present in 'set' (except self)
  */
-int singhal_set_msg_send (uint8 * buff, size_t len, nodes_set_t set) {
+int singhal_set_msg_send (uint8 * buff, size_t len, nodes_set_t set,
+                          char * const msctext)
+{
     int ix = 0;
     int ret = 0;
 
     for (ix = 1; ix < proc_id && !ret; ix++) {
     	if (set[ix]) {
-    		ret |= dme_send_msg(ix, buff, len);
+    		ret |= dme_send_msg(ix, buff, len, msctext);
     	}
     }
 
     for (ix = proc_id + 1; ix <= nodes_count && !ret; ix++) {
     	if (set[ix]) {
-    		ret |= dme_send_msg(ix, buff, len);
+    		ret |= dme_send_msg(ix, buff, len, msctext);
     	}
     }
 
@@ -305,9 +325,16 @@ static int handle_supervisor_msg(void * cookie) {
         /* record the time */
         clock_gettime(CLOCK_REALTIME, &sup_tstamp);
         sup_msg_parse(*buff, &srcmsg);
-        critical_region_simulated_duration = srcmsg.sec_tdelta;
 
-        ret = handle_event(DME_EV_WANT_CRITICAL_REG, NULL);
+        if (srcmsg.msg_type == DME_SEV_SYNCRO) {
+            sup_syncro.tv_sec = srcmsg.sec_tdelta;
+            sup_syncro.tv_nsec = srcmsg.nsec_tdelta;
+        }
+        else if (srcmsg.msg_type == DME_EV_WANT_CRITICAL_REG) {
+            critical_region_simulated_duration = srcmsg.sec_tdelta;
+            ret = handle_event(DME_EV_WANT_CRITICAL_REG, NULL);
+        }
+
         break;
 
     /* The supervisor should not send a message in these states */
@@ -330,6 +357,7 @@ static int handle_peer_msg(void * cookie) {
     dbg_msg("");
     singhal_message_t srcmsg = {};
     singhal_message_t dstmsg = {};
+    char msctext[MAX_MSC_TEXT] = {};
     request_t req = {};
     proc_id_t Sj;
     int ret = 0;
@@ -384,8 +412,8 @@ static int handle_peer_msg(void * cookie) {
             } else {
                 /* Send back the REPLY message */
                 dbg_msg("Received request has priority. Sending REPLY to %llu", Sj);
-                singhal_msg_set(&dstmsg, MTYPE_REPLY);
-                dme_send_msg(Sj, (uint8*)&dstmsg, SINGHAL_MSG_LEN);
+                singhal_msg_set(&dstmsg, MTYPE_REPLY, msctext, sizeof(msctext));
+                dme_send_msg(Sj, (uint8*)&dstmsg, SINGHAL_MSG_LEN, msctext);
 
                 if(!Ri[Sj]) {
                     dbg_msg("Site %llu was not in Ri. Adding it now.", Sj);
@@ -395,11 +423,11 @@ static int handle_peer_msg(void * cookie) {
                      * Send REQ to Sj and update our pending request's time stamp.
                      * (Equivalent to updating the logical lamport clock)
                      */
-                    singhal_msg_set(&dstmsg, MTYPE_REQUEST);
+                    singhal_msg_set(&dstmsg, MTYPE_REQUEST, msctext, sizeof(msctext));
                     pending_request.sec_tstamp = ntohl(dstmsg.tstamp_sec);
                     pending_request.nsec_tstamp = ntohl(dstmsg.tstamp_nsec);
 
-                    dme_send_msg(Sj, (uint8*)&dstmsg, SINGHAL_MSG_LEN);
+                    dme_send_msg(Sj, (uint8*)&dstmsg, SINGHAL_MSG_LEN, msctext);
                 }
             }
         }
@@ -412,8 +440,8 @@ static int handle_peer_msg(void * cookie) {
             dbg_msg("We're idle. Add site %llu to Ri and send REPLY.", Sj);
             add_to_set(Ri, Sj);
             /* Send the REPLY message */
-            singhal_msg_set(&dstmsg, MTYPE_REPLY);
-            dme_send_msg(Sj, (uint8*)&dstmsg, SINGHAL_MSG_LEN);
+            singhal_msg_set(&dstmsg, MTYPE_REPLY, msctext, sizeof(msctext));
+            dme_send_msg(Sj, (uint8*)&dstmsg, SINGHAL_MSG_LEN, msctext);
         }
 
     } else if (srcmsg.type == MTYPE_REPLY) {
@@ -446,6 +474,7 @@ static int handle_peer_msg(void * cookie) {
 int process_ev_want_cr(void * cookie)
 {
     singhal_message_t dstmsg = {};
+    char msctext[MAX_MSC_TEXT] = {};
     int err = 0;
 
     dbg_msg("Entered DME_EV_WANT_CRITICAL_REG");
@@ -466,12 +495,12 @@ int process_ev_want_cr(void * cookie)
     dbg_msg("Ask permission from all sites in Ri.");
     print_set(Ri);
 
-    singhal_msg_set(&dstmsg, MTYPE_REQUEST);
+    singhal_msg_set(&dstmsg, MTYPE_REQUEST, msctext, sizeof(msctext));
 
     /* Record my request's time stamp and save o copy of this REQUEST message*/
     pending_request.sec_tstamp = ntohl(dstmsg.tstamp_sec);
     pending_request.nsec_tstamp = ntohl(dstmsg.tstamp_nsec);
-    err = singhal_set_msg_send((uint8*)&dstmsg, SINGHAL_MSG_LEN, Ri);
+    err = singhal_set_msg_send((uint8*)&dstmsg, SINGHAL_MSG_LEN, Ri, msctext);
 
     /* if Ri is void we can enter the CS directly */
     dbg_msg("Test if Ri is void");
@@ -520,6 +549,7 @@ int process_ev_entered_cr(void * cookie)
 int process_ev_exited_cr(void * cookie)
 {
     singhal_message_t msg = {};
+    char msctext[MAX_MSC_TEXT] = {};
     int err = 0;
     int ix;
 
@@ -537,12 +567,12 @@ int process_ev_exited_cr(void * cookie)
     Executing = FALSE;
 
     /* inform all peers from Ii that we left the CS */
-    singhal_msg_set(&msg, MTYPE_REPLY);
+    singhal_msg_set(&msg, MTYPE_REPLY, msctext, sizeof(msctext));
 
     dbg_msg("");
     dbg_msg("Inform all sites in Ii.");
     print_set(Ii);
-    err = singhal_set_msg_send((uint8*)&msg, SINGHAL_MSG_LEN, Ii);
+    err = singhal_set_msg_send((uint8*)&msg, SINGHAL_MSG_LEN, Ii, msctext);
 
     /* Move sites from Ii to Ri */
     dbg_msg("Move sites from Ii to Ri.");

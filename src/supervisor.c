@@ -59,11 +59,13 @@ static unsigned int received_resps_count;
 static int trigger_critical_region (proc_id_t dest_pid,
                                     uint32 sec_delta, uint32 nsec_delta) {
     sup_message_t msg = {};
+    char msctext[MAX_MSC_TEXT] = {};
     uint8 * buff = (uint8 *) &msg;
     
-    sup_msg_set(&msg, DME_EV_WANT_CRITICAL_REG, sec_delta, nsec_delta, 0);
+    sup_msg_set(&msg, DME_EV_WANT_CRITICAL_REG, sec_delta, nsec_delta, 0,
+                msctext, sizeof(msctext));
     
-    return dme_send_msg(dest_pid, buff, SUPERVISOR_MESSAGE_LENGTH);
+    return dme_send_msg(dest_pid, buff, SUPERVISOR_MESSAGE_LENGTH, msctext);
 }
 
 static void randomizer_init(void) {
@@ -98,6 +100,27 @@ static proc_id_t get_random_pid() {
  * Event handler functions.
  * These functions must properly free the cookie received.
  */
+int syncro(void * cookie) {
+    sup_message_t msg = {};
+    char msctext[MAX_MSC_TEXT] = {};
+    uint8 * buff = (uint8 *) &msg;
+    timespec_t ts_syncro;
+    timespec_t *pts = NULL;
+
+    if ((timespec_t*)cookie == NULL) {
+        clock_gettime(CLOCK_REALTIME, &ts_syncro);
+        pts = &ts_syncro;
+    } else {
+        pts = (timespec_t*)cookie;
+    }
+
+    sup_msg_set(&msg, DME_SEV_SYNCRO,
+                (uint32)pts->tv_sec, (uint32)pts->tv_nsec, 0,
+                msctext, sizeof(msctext));
+
+    return dme_broadcast_msg(buff, SUPERVISOR_MESSAGE_LENGTH, msctext);
+
+}
 
 int do_work(void * cookie) {
 	dbg_msg("=================================================================");
@@ -353,6 +376,7 @@ int main(int argc, char *argv[])
     }
     
     register_event_handler(DME_SEV_PERIODIC_WORK, do_work);
+    register_event_handler(DME_SEV_SYNCRO, syncro);
     register_event_handler(DME_SEV_MSG_IN, process_messages);
 
     /* wait for peers processes to init, then kick start the supervisor */
@@ -360,6 +384,9 @@ int main(int argc, char *argv[])
     
     /* Start working; mark time */
     clock_gettime(CLOCK_REALTIME, &tstamp_supervisor_start);
+
+    deliver_event(DME_SEV_SYNCRO, &tstamp_supervisor_start);
+    sleep(1);
 
     deliver_event(DME_SEV_PERIODIC_WORK, NULL);
 

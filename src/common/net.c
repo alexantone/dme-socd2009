@@ -9,19 +9,36 @@
  */
 
 
+#include <stdio.h>
+#include <unistd.h>
+#include <time.h>
 
 #include <sys/socket.h>
 #include <common/net.h>
+#include <common/init.h>
 
 /* Global variables from main process */
 extern const link_info_t * const nodes;
 extern const size_t nodes_count;
 extern const proc_id_t proc_id;
 
+
+static int msc_msg(proc_id_t srcid, proc_id_t dstid, char * const msctext) {
+    struct timespec ts;
+
+    clock_gettime(CLOCK_REALTIME, &ts);
+    fprintf(stdout, "%9u.%09u # p%llu->p%llu: %s\n",
+            (uint32)ts.tv_sec, (uint32)ts.tv_nsec,
+            srcid, dstid, msctext);
+    fflush(stdout);
+    return 0;
+}
+
+
 /*
  * Send the buffer to node with process_id dest.
  */
-int dme_send_msg(proc_id_t dest, uint8 * buff, size_t len)
+int dme_send_msg(proc_id_t dest, uint8 * buff, size_t len, char * const msctext)
 {
     dbg_msg("send_msg(dest=%llu, buff@%p, len=%u)", dest, buff, len);
     int maxcount = nodes_count;
@@ -35,6 +52,7 @@ int dme_send_msg(proc_id_t dest, uint8 * buff, size_t len)
     
     dest_addr = (struct sockaddr *)&nodes[dest].listen_addr;
     
+    msc_msg(proc_id, dest, msctext);
     sendto(nodes[proc_id].sock_fd, buff, len, 0, dest_addr, sizeof(*dest_addr));
     return 0;
 }
@@ -43,15 +61,15 @@ int dme_send_msg(proc_id_t dest, uint8 * buff, size_t len)
  * Send a message to all the other nodes (except self):
  * {1, .., nodes_count} \ { proc_id }
  */
-int dme_broadcast_msg (uint8 * buff, size_t len) {
+int dme_broadcast_msg (uint8 * buff, size_t len, char * const msctext) {
     int ix = 0;
     int ret = 0;
     
     for (ix = 1; ix < proc_id && !ret; ix++) {
-        ret |= dme_send_msg(ix, buff, len);
+        ret |= dme_send_msg(ix, buff, len, msctext);
     }
     for (ix = proc_id + 1; ix <= nodes_count && !ret; ix++) {
-        ret |= dme_send_msg(ix, buff, len);
+        ret |= dme_send_msg(ix, buff, len, msctext);
     }
     
     return ret;
@@ -114,7 +132,8 @@ int dme_header_set(dme_message_hdr_t * const hdr, unsigned int msgtype,
  * Prepare a SUP message for network sending.
  */
 int sup_msg_set(sup_message_t * const msg, unsigned int msgtype,
-                uint32 sec_delta, uint32 nsec_delta, unsigned int flags)
+                uint32 sec_delta, uint32 nsec_delta, unsigned int flags,
+                char * const mscbuf, size_t msclen)
 {
     if (!msg) {
         return ERR_SUP_HDR;
@@ -127,6 +146,9 @@ int sup_msg_set(sup_message_t * const msg, unsigned int msgtype,
     msg->nsec_tdelta = htonl(nsec_delta);
     msg->flags = htonl((uint16)flags);
     
+    snprintf(mscbuf, msclen, "%s(%u.%09u)",
+             evtostr(msgtype), sec_delta, nsec_delta);
+
     return 0;
 }
 
