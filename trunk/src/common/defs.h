@@ -71,6 +71,7 @@ typedef enum dme_evt_e {
     /* These events are used by the supervisor */
 #define DME_SEV_MSG_IN DME_EV_SUP_MSG_IN   /* the supervisor uses only SUP messages */
     DME_SEV_PERIODIC_WORK,
+    DME_SEV_SYNCRO,
     
     /* 
      * Events greater than are DME_INTERNAL_EV_START registered statically.
@@ -104,7 +105,7 @@ typedef struct buff_s {
 /*
  * Debuging macros
  */
-#define DEBUGING_ENABLED
+//#define DEBUGING_ENABLED
 #ifdef DEBUGING_ENABLED
 
 #define dbg_msg(format, args...) \

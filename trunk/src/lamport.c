@@ -32,6 +32,7 @@ bool_t exit_request = FALSE;
 
 static char * fname = NULL;
 static struct timespec sup_tstamp;      /* used for performance measurements */
+static timespec_t sup_syncro;           /* used to sync with the supervisor */
 static uint32 critical_region_simulated_duration = 0;
 
 /*
@@ -42,6 +43,16 @@ enum lmaport_msg_types {
     MTYPE_REPLY,
     MTYPE_RELEASE,
 };
+
+static inline
+const char * msg_type_tostr(int mtype) {
+    switch(mtype) {
+    case MTYPE_REQUEST: return "REQUEST";
+    case MTYPE_REPLY:   return "REPLY";
+    case MTYPE_RELEASE: return "RELEASE";
+    }
+    return "UNKNOWN";
+}
 
 /*
  * Structure of the lamport DME message
@@ -185,14 +196,16 @@ static bool_t my_turn(void) {
 static void peer_msg_add_timestamp(lamport_message_t * msg) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    msg->tstamp_sec = htonl((uint32)ts.tv_sec);
-    msg->tstamp_nsec = htonl((uint32)ts.tv_nsec);
+    msg->tstamp_sec = htonl((uint32)(ts.tv_sec - sup_syncro.tv_sec));
+    msg->tstamp_nsec = htonl((uint32)(ts.tv_nsec - sup_syncro.tv_nsec));
 }
 
 /*
  * Prepare a lamport message for network sending.
  */
-static int lamport_msg_set(lamport_message_t * const msg, unsigned int msgtype) {
+static int lamport_msg_set(lamport_message_t * const msg, unsigned int msgtype,
+                           char * const msctext, size_t msclen)
+{
     if (!msg) {
         return ERR_DME_HDR;
     }
@@ -204,7 +217,10 @@ static int lamport_msg_set(lamport_message_t * const msg, unsigned int msgtype) 
     peer_msg_add_timestamp(msg);
     msg->type = htonl(msgtype);
     msg->pid = htonq(proc_id);
-    
+
+    snprintf(msctext, msclen, "%s(ts=%u.%04u, pid=%llu)", msg_type_tostr(msgtype),
+             ntohl(msg->tstamp_sec), ntohl(msg->tstamp_nsec)/100000, proc_id);
+
     return 0;
 }
 
@@ -234,6 +250,7 @@ static int lamport_msg_parse(buff_t buff, lamport_message_t * msg) {
  */
 static int supervisor_send_inform_message(dme_ev_t ev) {
     sup_message_t msg = {};
+    char msctext[MAX_MSC_TEXT] = {};
     int err = 0;
     timespec_t tnow;
     timespec_t tdelta;
@@ -245,8 +262,10 @@ static int supervisor_send_inform_message(dme_ev_t ev) {
         tdelta = timespec_delta(sup_tstamp, tnow);
         
         /* construct and send the message */
-        sup_msg_set(&msg, ev, tdelta.tv_sec, tdelta.tv_nsec, 0);
-        err = dme_send_msg(SUPERVISOR_PID, (uint8*)&msg, SUPERVISOR_MESSAGE_LENGTH);
+        sup_msg_set(&msg, ev, tdelta.tv_sec, tdelta.tv_nsec, 0,
+                    msctext, sizeof(msctext));
+        err = dme_send_msg(SUPERVISOR_PID, (uint8*)&msg, SUPERVISOR_MESSAGE_LENGTH,
+                           msctext);
         
         /* set new sup_tstamp to tnow */
         sup_tstamp.tv_sec = tnow.tv_sec;
@@ -287,9 +306,16 @@ static int handle_supervisor_msg(void * cookie) {
         /* record the time */
         clock_gettime(CLOCK_REALTIME, &sup_tstamp);
         sup_msg_parse(*buff, &srcmsg);
-        critical_region_simulated_duration = srcmsg.sec_tdelta;
 
-        ret = handle_event(DME_EV_WANT_CRITICAL_REG, NULL);
+        if (srcmsg.msg_type == DME_SEV_SYNCRO) {
+            sup_syncro.tv_sec = srcmsg.sec_tdelta;
+            sup_syncro.tv_nsec = srcmsg.nsec_tdelta;
+        }
+        else if (srcmsg.msg_type == DME_EV_WANT_CRITICAL_REG) {
+            critical_region_simulated_duration = srcmsg.sec_tdelta;
+            ret = handle_event(DME_EV_WANT_CRITICAL_REG, NULL);
+        }
+
         break;
 
     /* The supervisor should not send a message in these states */
@@ -310,6 +336,7 @@ static int handle_supervisor_msg(void * cookie) {
 /* This is the algortihm's implementation */
 static int handle_peer_msg(void * cookie) {
     dbg_msg("Entry point");
+    char msctext[MAX_MSC_TEXT] = {};
     lamport_message_t srcmsg = {};
     lamport_message_t dstmsg = {};
     request_queue_elem_t * req = NULL;
@@ -331,8 +358,8 @@ static int handle_peer_msg(void * cookie) {
         if (srcmsg.type == MTYPE_REQUEST) {
             dbg_msg("Recieved a REQUEST message from %llu", srcmsg.pid);
             /* Send back the REPLY message */
-            lamport_msg_set(&dstmsg, MTYPE_REPLY);
-            dme_send_msg(srcmsg.pid, (uint8*)&dstmsg, LAMPORT_MSG_LEN);
+            lamport_msg_set(&dstmsg, MTYPE_REPLY, msctext, sizeof(msctext));
+            dme_send_msg(srcmsg.pid, (uint8*)&dstmsg, LAMPORT_MSG_LEN, msctext);
             
             /* insert the request in the request_queue */
             req = calloc(1, sizeof(request_queue_elem_t));
@@ -385,6 +412,7 @@ static int handle_peer_msg(void * cookie) {
 int process_ev_want_cr(void * cookie)
 {
     lamport_message_t dstmsg = {};
+    char msctext[MAX_MSC_TEXT] = {};
     request_queue_elem_t * req = NULL;
     int err = 0;
     
@@ -402,8 +430,8 @@ int process_ev_want_cr(void * cookie)
     /* Clear the table of REPLY messages from peers (1 based) */
     memset(replies, FALSE, nodes_count * sizeof(bool_t) + 1);
     
-    lamport_msg_set(&dstmsg, MTYPE_REQUEST);
-    err = dme_broadcast_msg((uint8*)&dstmsg, LAMPORT_MSG_LEN);
+    lamport_msg_set(&dstmsg, MTYPE_REQUEST, msctext, sizeof(msctext));
+    err = dme_broadcast_msg((uint8*)&dstmsg, LAMPORT_MSG_LEN, msctext);
     
     /* 
      * Insert the request in the request_queue.
@@ -452,6 +480,7 @@ int process_ev_entered_cr(void * cookie)
 int process_ev_exited_cr(void * cookie)
 {
     lamport_message_t msg = {};
+    char msctext[MAX_MSC_TEXT] = {};
     int err = 0;
     dbg_msg("Entry point");
     
@@ -468,8 +497,8 @@ int process_ev_exited_cr(void * cookie)
     fsm_state = PS_IDLE;
     
     /* inform all peers that we left the CS */
-    lamport_msg_set(&msg, MTYPE_RELEASE);
-    err = dme_broadcast_msg((uint8*)&msg, LAMPORT_MSG_LEN);
+    lamport_msg_set(&msg, MTYPE_RELEASE, msctext, sizeof(msctext));
+    err = dme_broadcast_msg((uint8*)&msg, LAMPORT_MSG_LEN, msctext);
     
     return err;
 }

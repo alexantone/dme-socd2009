@@ -40,6 +40,14 @@ enum suzuki_msg_types {
     MTYPE_REPLY,
 };
 
+const char * msg_type_tostr(int mtype) {
+    switch(mtype) {
+    case MTYPE_REQUEST: return "REQUEST";
+    case MTYPE_REPLY:   return "REPLY";
+    }
+    return "UNKNOWN";
+}
+
 unsigned int suzuki_RN[50] = {0}; //RN[j] is the largest order number received so far
 
 
@@ -68,6 +76,32 @@ typedef struct suzuki_message_s suzuki_message_t;
 
 #define SUZUKI_MSG_LEN  (sizeof(suzuki_message_t))
 #define SUZUKI_DATA_LEN (SUZUKI_MSG_LEN - DME_MESSAGE_HEADER_LEN)
+
+/*
+ * Debugging functions
+ */
+static char * token_tostr(struct token_s *tok, char * const buf, size_t len)
+{
+    size_t pos = 0;
+    int ix;
+
+    pos += snprintf(buf + pos, len - pos, "LN: {");
+    for (ix = 0 ; ix < sizeof(tok->suzuki_LN) && tok->suzuki_LN[ix]; ix++) {
+        pos += snprintf(buf + pos, len - pos, "%u, ", tok->suzuki_LN[ix]);
+    }
+    pos -= 2;
+    pos += snprintf(buf + pos, len - pos, "}\n");
+
+    pos += snprintf(buf + pos, len - pos, "Q: {");
+    for (ix = 0 ; ix < sizeof(tok->pseudo_queue) && tok->pseudo_queue[ix]; ix++) {
+        pos += snprintf(buf + pos, len - pos, "%u, ", tok->pseudo_queue[ix]);
+    }
+    pos -= 2;
+    pos += snprintf(buf + pos, len - pos, "}");
+    buf[pos] = '\0';
+
+    return buf;
+}
 
 /*
  * Helper functions.
@@ -131,7 +165,10 @@ static void request_queue_pop(void){
 /*
  * Prepare a suzuki message for network sending.
  */
-static int suzuki_msg_set(suzuki_message_t * const msg, unsigned int msgtype) {
+static int suzuki_msg_set(suzuki_message_t * const msg, unsigned int msgtype,
+                          char * const msctext, size_t msclen)
+{
+    char tokbuf[256] = {};
     if (!msg) {
         return ERR_DME_HDR;
     }
@@ -145,6 +182,13 @@ static int suzuki_msg_set(suzuki_message_t * const msg, unsigned int msgtype) {
     msg->pid = htonq(proc_id);
     msg->req_no = htonl(suzuki_RN[proc_id]);
     msg->token = my_token;
+
+
+    snprintf(msctext, msclen, "%s(pid=%llu, reqno=%u,\n"
+                              "   tok: {%s})",
+             msg_type_tostr(msgtype), proc_id, suzuki_RN[proc_id],
+             token_tostr(&my_token, tokbuf, sizeof(tokbuf)));
+
     return 0;
 }
 
@@ -174,6 +218,7 @@ static int suzuki_msg_parse(buff_t buff, suzuki_message_t * msg) {
  */
 static int supervisor_send_inform_message(dme_ev_t ev) {
     sup_message_t msg = {};
+    char msctext[MAX_MSC_TEXT] = {};
     int err = 0;
     timespec_t tnow;
     timespec_t tdelta;
@@ -185,8 +230,10 @@ static int supervisor_send_inform_message(dme_ev_t ev) {
         tdelta = timespec_delta(sup_tstamp, tnow);
 
         /* construct and send the message */
-        sup_msg_set(&msg, ev, tdelta.tv_sec, tdelta.tv_nsec, 0);
-        err = dme_send_msg(SUPERVISOR_PID, (uint8*)&msg, SUPERVISOR_MESSAGE_LENGTH);
+        sup_msg_set(&msg, ev, tdelta.tv_sec, tdelta.tv_nsec, 0,
+                    msctext, sizeof(msctext));
+        err = dme_send_msg(SUPERVISOR_PID, (uint8*)&msg, SUPERVISOR_MESSAGE_LENGTH,
+                           msctext);
 
         /* set new sup_tstamp to tnow */
         sup_tstamp.tv_sec = tnow.tv_sec;
@@ -208,6 +255,7 @@ static int supervisor_send_inform_message(dme_ev_t ev) {
  */
 
 static int fsm_state = PS_IDLE;
+static timespec_t sup_syncro;
 
 static int handle_supervisor_msg(void * cookie) {
     dbg_msg("");
@@ -226,9 +274,16 @@ static int handle_supervisor_msg(void * cookie) {
         /* record the time */
         clock_gettime(CLOCK_REALTIME, &sup_tstamp);
         sup_msg_parse(*buff, &srcmsg);
-        critical_region_simulated_duration = srcmsg.sec_tdelta;
 
-        ret = handle_event(DME_EV_WANT_CRITICAL_REG, NULL);
+        if (srcmsg.msg_type == DME_SEV_SYNCRO) {
+            sup_syncro.tv_sec = srcmsg.sec_tdelta;
+            sup_syncro.tv_nsec = srcmsg.nsec_tdelta;
+        }
+        else if (srcmsg.msg_type == DME_EV_WANT_CRITICAL_REG) {
+            critical_region_simulated_duration = srcmsg.sec_tdelta;
+            ret = handle_event(DME_EV_WANT_CRITICAL_REG, NULL);
+        }
+
         break;
 
     /* The supervisor should not send a message in these states */
@@ -255,6 +310,7 @@ static int handle_peer_msg(void * cookie) {
     proc_id_t dst_pid;
     suzuki_message_t srcmsg = {};
     suzuki_message_t dstmsg = {};
+    char msctext[MAX_MSC_TEXT] = {};
     int ret = 0;
     const buff_t * buff = (buff_t *)cookie;
     int ix;
@@ -285,8 +341,8 @@ static int handle_peer_msg(void * cookie) {
 
 				dst_pid = my_token.pseudo_queue[final_element_in_queue];
 				request_queue_pop();
-				suzuki_msg_set(&dstmsg, MTYPE_REPLY);
-				dme_send_msg(dst_pid, (uint8*)&dstmsg, SUZUKI_MSG_LEN);
+				suzuki_msg_set(&dstmsg, MTYPE_REPLY, msctext, sizeof(msctext));
+				dme_send_msg(dst_pid, (uint8*)&dstmsg, SUZUKI_MSG_LEN, msctext);
 				i_have_token = FALSE;
 				memset(&my_token , 0 , sizeof(my_token));
     		}else {
@@ -334,6 +390,7 @@ static int handle_peer_msg(void * cookie) {
 int process_ev_want_cr()
 {
     suzuki_message_t dstmsg = {};
+    char msctext[MAX_MSC_TEXT] = {};
     int err = 0;
 
     dbg_msg("Entered DME_EV_WANT_CRITICAL_REG");
@@ -349,8 +406,8 @@ int process_ev_want_cr()
 
     suzuki_RN[proc_id]++;
     if (i_have_token == FALSE){
-		suzuki_msg_set(&dstmsg, MTYPE_REQUEST);
-		err = dme_broadcast_msg((uint8*)&dstmsg, SUZUKI_MSG_LEN);
+		suzuki_msg_set(&dstmsg, MTYPE_REQUEST, msctext, sizeof(msctext));
+		err = dme_broadcast_msg((uint8*)&dstmsg, SUZUKI_MSG_LEN, msctext);
     } else {
     	deliver_event(DME_EV_ENTERED_CRITICAL_REG, NULL);
     }
@@ -391,6 +448,7 @@ int process_ev_entered_cr(void * cookie)
 int process_ev_exited_cr(void * cookie)
 {
     suzuki_message_t dstmsg = {};
+    char msctext[MAX_MSC_TEXT] = {};
     proc_id_t dst_pid;
     int err = 0;
     int ix;
@@ -419,8 +477,8 @@ int process_ev_exited_cr(void * cookie)
 	if (final_element_in_queue >= 0) {
 		dst_pid = my_token.pseudo_queue[final_element_in_queue];
 		request_queue_pop();
-		suzuki_msg_set(&dstmsg, MTYPE_REPLY);
-		dme_send_msg(dst_pid, (uint8*)&dstmsg, SUZUKI_MSG_LEN);
+		suzuki_msg_set(&dstmsg, MTYPE_REPLY, msctext, sizeof(msctext));
+		dme_send_msg(dst_pid, (uint8*)&dstmsg, SUZUKI_MSG_LEN, msctext);
 		i_have_token = FALSE;
 		memset(&my_token , 0 , sizeof(my_token));
 	} else {

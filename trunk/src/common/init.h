@@ -22,7 +22,10 @@ extern const char * sigrttostr(unsigned int signo);
 
 extern int  init_handlers(int sock);
 extern int  deinit_handlers(void);
-extern void register_event_handler(dme_ev_t event, ev_handler_fnct_t func);
+
+extern void register_event_handler_(dme_ev_t event, ev_handler_fnct_t func,
+                                    char * funcname);
+#define register_event_handler(ev, fn) register_event_handler_(ev, fn, #fn)
 
 extern int  deliver_event(dme_ev_t event, void * cookie);
 extern int  handle_event(dme_ev_t event, void * cookie);
